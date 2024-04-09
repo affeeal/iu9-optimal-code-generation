@@ -17,7 +17,7 @@
 
 #include <iostream>
 
-#include "gcc-plugin.h"  // must be the first gcc header to be included
+#include "gcc-plugin.h"  // must be the first gcc header to include
 #include "plugin-version.h"
 
 int plugin_is_GPL_compatible;  // asserts the plugin is licensed under the
@@ -29,6 +29,5 @@ int plugin_init(struct plugin_name_args *plugin_info,
     return 1;
   }
 
-  std::cout << "Hello, GCC!\n";
   return 0;
 }
