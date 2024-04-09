@@ -10,8 +10,6 @@ add_library(${PROJECT_NAME} SHARED lab1.cc)
 set_property(TARGET ${PROJECT_NAME} PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
-target_compile_options(${PROJECT_NAME}
-  PRIVATE -Wall -Wextra -Wpedantic -fno-rtti
-)
+target_compile_options(${PROJECT_NAME} PRIVATE -Wall -fno-rtti)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${PluginPath}/include)
