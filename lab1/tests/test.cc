@@ -1,14 +1,11 @@
-void Bar() {}
-
-int Foo(const int x, const int x_doubled) {
-  return 3 * x + x_doubled;
+void Foo() {
 }
 
 int main() {
-  Bar();
+  int x = 1;
+  if (x > 2) {
+    x += 3;
+  }
 
-  auto x = 0;
-  auto y = Foo(x, x * 2);
-
-  return y % 2;
+  int y = x;
 }
