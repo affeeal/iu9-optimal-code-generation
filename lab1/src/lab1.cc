@@ -44,10 +44,23 @@ const auto kPrintPass = std::make_unique<PrintPass>(g);
 
 constexpr std::string_view kBasicBlocks = "basic_blocks";
 constexpr std::string_view kFunctions = "functions";
+constexpr std::string_view kGimpleType = "gimple_type";
 constexpr std::string_view kIndex = "index";
+constexpr std::string_view kLhs = "lhs";
 constexpr std::string_view kName = "name";
 constexpr std::string_view kPredecessors = "predecessors";
+constexpr std::string_view kRhsClass = "rhs_class";
+constexpr std::string_view kRhsCode = "rhs_code";
+constexpr std::string_view kStatements = "statements";
 constexpr std::string_view kSuccessors = "successors";
+constexpr std::string_view kTreeType = "tree_type";
+constexpr std::string_view kValue = "value";
+
+constexpr std::string_view kGimpleSingleRhs = "GIMPLE_SINGLE_RHS";
+constexpr std::string_view kGimpleUnaryRhs = "GIMPLE_UNARY_RHS";
+constexpr std::string_view kGimpleBinaryRhs = "GIMPLE_BINARY_RHS";
+constexpr std::string_view kGimpleTernaryRhs = "GIMPLE_TERNARY_RHS";
+constexpr std::string_view kGimpleInvalidRhs = "GIMPLE_INVALID_RHS";
 
 constexpr auto kPrintPassData = pass_data{
     .type = GIMPLE_PASS,
@@ -61,6 +74,30 @@ constexpr auto kPrintPassData = pass_data{
     .todo_flags_finish = 0,
 };
 
+std::string_view ToString(const gimple_rhs_class rhs_class) {
+  switch (rhs_class) {
+    case GIMPLE_SINGLE_RHS: {
+      return kGimpleSingleRhs;
+    }
+
+    case GIMPLE_UNARY_RHS: {
+      return kGimpleUnaryRhs;
+    }
+
+    case GIMPLE_BINARY_RHS: {
+      return kGimpleBinaryRhs;
+    }
+
+    case GIMPLE_TERNARY_RHS: {
+      return kGimpleTernaryRhs;
+    }
+
+    case GIMPLE_INVALID_RHS: {
+      return kGimpleInvalidRhs;
+    }
+  }
+}
+
 class PrintPass final : public gimple_opt_pass {
  public:
   PrintPass(gcc::context* ctxt) : gimple_opt_pass(kPrintPassData, ctxt) {}
@@ -71,7 +108,35 @@ class PrintPass final : public gimple_opt_pass {
 
 PrintPass* PrintPass::clone() { return this; }
 
-void HandleGimpleAssignStatement(gimple* const stmt) {}
+boost::json::object ToObject(const tree tree) {
+  auto obj = boost::json::object{};
+  obj[kTreeType] = get_tree_code_name(TREE_CODE(tree));
+
+  switch (TREE_CODE(tree)) {
+    case INTEGER_CST: {
+      obj[kValue] = TREE_INT_CST_LOW(tree);
+      break;
+    }
+
+    default: {
+      // TODO
+      break;
+    }
+  }
+
+  return obj;
+}
+
+boost::json::object TraverseGimpleAssignStatement(gimple* const stmt) {
+  auto stmt_obj = boost::json::object{};
+  stmt_obj[kGimpleType] = "GIMPLE_ASSIGN";
+  stmt_obj[kRhsClass] = ToString(gimple_assign_rhs_class(stmt));
+  stmt_obj[kRhsCode] = get_tree_code_name(gimple_assign_rhs_code(stmt));
+  stmt_obj[kLhs] = ToObject(gimple_assign_lhs(stmt));
+  // TODO: rhs1, rhs2, rhs3
+
+  return stmt_obj;
+}
 
 boost::json::object TraverseBasicBlock(const basic_block bb) {
   auto bb_obj = boost::json::object{};
@@ -87,15 +152,17 @@ boost::json::object TraverseBasicBlock(const basic_block bb) {
   auto ei = edge_iterator{};
 
   FOR_EACH_EDGE(e, ei, bb->preds) { preds.push_back(e->src->index); }
-
   FOR_EACH_EDGE(e, ei, bb->succs) { succs.push_back(e->dest->index); }
+
+  auto& stmts = (bb_obj[kStatements] = boost::json::array{}).as_array();
+  // TODO: reserve
 
   for (auto gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
     auto* stmt = gsi_stmt(gsi);
 
     switch (gimple_code(stmt)) {
       case GIMPLE_ASSIGN: {
-        HandleGimpleAssignStatement(stmt);
+        stmts.push_back(TraverseGimpleAssignStatement(stmt));
         break;
       }
 
@@ -112,11 +179,11 @@ unsigned int PrintPass::execute(function* fn) {
   auto fn_obj = boost::json::object{};
   fn_obj[kName] = function_name(fn);
 
-  auto& bb_arr = (fn_obj[kBasicBlocks] = boost::json::array{}).as_array();
-  bb_arr.reserve(n_basic_blocks_for_fn(fn));
+  auto& bbs = (fn_obj[kBasicBlocks] = boost::json::array{}).as_array();
+  bbs.reserve(n_basic_blocks_for_fn(fn));
 
   auto bb = basic_block{};
-  FOR_EACH_BB_FN(bb, fn) { bb_arr.push_back(TraverseBasicBlock(bb)); }
+  FOR_EACH_BB_FN(bb, fn) { bbs.push_back(TraverseBasicBlock(bb)); }
 
   ir[kFunctions].as_array().push_back(std::move(fn_obj));
 

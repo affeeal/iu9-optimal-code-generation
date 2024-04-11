@@ -10,7 +10,7 @@
           "statements": [
             {
               "type": "GIMPLE_ASSIGN",
-              "image": "..."
+              "rhs_class": "GIMPLE_UNARY_RHS"
             }
           ]
         }
