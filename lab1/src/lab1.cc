@@ -23,12 +23,16 @@
 #include <boost/json.hpp>
 
 #include "gcc-plugin.h"  // the first gcc header to be included
+#include "tree-core.h"
 #include "tree.h"
 #include "tree-pass.h"
 #include "gimple.h"
 #include "gimple-iterator.h"
+#include "gimple-pretty-print.h"
 #include "context.h"
 #include "plugin-version.h"
+#include "ssa.h"
+#include "ssa-iterators.h"
 // clang-format on
 
 int plugin_is_GPL_compatible;  // asserts the plugin is licensed under the
@@ -108,13 +112,38 @@ class PrintPass final : public gimple_opt_pass {
 
 PrintPass* PrintPass::clone() { return this; }
 
-boost::json::object ToObject(const tree tree) {
+boost::json::object ToObject(const tree tr) {
   auto obj = boost::json::object{};
-  obj[kTreeType] = get_tree_code_name(TREE_CODE(tree));
+  obj[kTreeType] = get_tree_code_name(TREE_CODE(tr));
 
-  switch (TREE_CODE(tree)) {
+  switch (TREE_CODE(tr)) {
     case INTEGER_CST: {
-      obj[kValue] = TREE_INT_CST_LOW(tree);
+      obj[kValue] = TREE_INT_CST_LOW(tr);
+      break;
+    }
+
+    case SSA_NAME: {
+      if (const auto id = SSA_NAME_IDENTIFIER(tr)) {
+        obj["name"] = IDENTIFIER_POINTER(id);
+      } else {
+        // TODO: отобразить "индекс" переменной?
+        obj["name"] = nullptr;
+      }
+
+      obj["version"] = SSA_NAME_VERSION(tr);
+
+      if (const auto stmt = SSA_NAME_DEF_STMT(tr);
+          gimple_code(stmt) == GIMPLE_PHI) {
+        const auto args_num = gimple_phi_num_args(stmt);
+
+        auto& args = (obj["phi_args"] = boost::json::array{}).as_array();
+        args.reserve(args_num);
+
+        for (std::size_t i = 0; i < args_num; ++i) {
+          args.push_back(ToObject(gimple_phi_arg_def(stmt, i)));
+        }
+      }
+
       break;
     }
 
