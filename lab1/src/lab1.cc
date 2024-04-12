@@ -141,7 +141,7 @@ boost::json::object ToObject(const const_tree tr) {
   return obj;
 }
 
-boost::json::object GimpleAssignToObject(const gassign* const assign) {
+boost::json::object GassignToObject(const gassign* const assign) {
   auto assign_obj = boost::json::object{};
   assign_obj["type"] = "gimple_assign";
   assign_obj["lhs"] = ToObject(gimple_assign_lhs(assign));
@@ -162,7 +162,7 @@ boost::json::object GimpleAssignToObject(const gassign* const assign) {
   return assign_obj;
 }
 
-boost::json::object GimpleCallToObject(const gcall* const call) {
+boost::json::object GcallToObject(const gcall* const call) {
   auto call_obj = boost::json::object{};
   call_obj["type"] = "gimple_call";
 
@@ -185,7 +185,7 @@ boost::json::object GimpleCallToObject(const gcall* const call) {
   return call_obj;
 }
 
-boost::json::object GimpleCondToObject(const gcond* const cond) {
+boost::json::object GcondToObject(const gcond* const cond) {
   auto cond_obj = boost::json::object{};
   cond_obj["type"] = "gimple_cond";
   cond_obj["predicat_code"] = get_tree_code_name(gimple_cond_code(cond));
@@ -197,12 +197,19 @@ boost::json::object GimpleCondToObject(const gcond* const cond) {
   return cond_obj;
 }
 
-boost::json::object GimpleLabelToObject(const glabel* const label) {
+boost::json::object GlabelToObject(const glabel* const label) {
   auto label_obj = boost::json::object{};
   label_obj["type"] = "gimple_label";
-  label_obj["label"] = ToObject(gimple_label_label(label));
+  label_obj["value"] = ToObject(gimple_label_label(label));
 
   return label_obj;
+}
+
+boost::json::object GreturnToObject([[maybe_unused]] const greturn* const ret) {
+  auto return_obj = boost::json::object{};
+  return_obj["type"] = "gimple_return";
+
+  return return_obj;
 }
 
 boost::json::object BasicBlockToObject(const basic_block bb) {
@@ -229,27 +236,33 @@ boost::json::object BasicBlockToObject(const basic_block bb) {
 
     switch (gimple_code(stmt)) {
       case GIMPLE_ASSIGN: {
-        stmts.push_back(GimpleAssignToObject(static_cast<gassign*>(stmt)));
+        stmts.push_back(GassignToObject(static_cast<gassign*>(stmt)));
         break;
       }
 
       case GIMPLE_CALL: {
-        stmts.push_back(GimpleCallToObject(static_cast<gcall*>(stmt)));
+        stmts.push_back(GcallToObject(static_cast<gcall*>(stmt)));
         break;
       }
 
       case GIMPLE_COND: {
-        stmts.push_back(GimpleCondToObject(static_cast<gcond*>(stmt)));
+        stmts.push_back(GcondToObject(static_cast<gcond*>(stmt)));
         break;
       }
 
       case GIMPLE_LABEL: {
-        stmts.push_back(GimpleLabelToObject(static_cast<glabel*>(stmt)));
+        stmts.push_back(GlabelToObject(static_cast<glabel*>(stmt)));
+        break;
+      }
+
+      case GIMPLE_RETURN: {
+        stmts.push_back(GreturnToObject(static_cast<greturn*>(stmt)));
         break;
       }
 
       default: {
-        // TODO
+        std::cerr << "Unsupported GIMPLE code " << gimple_code(stmt) << "\n";
+        break;
       }
     }
   }
