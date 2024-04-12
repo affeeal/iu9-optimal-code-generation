@@ -28,11 +28,8 @@
 #include "tree-pass.h"
 #include "gimple.h"
 #include "gimple-iterator.h"
-#include "gimple-pretty-print.h"
 #include "context.h"
 #include "plugin-version.h"
-#include "ssa.h"
-#include "ssa-iterators.h"
 // clang-format on
 
 int plugin_is_GPL_compatible;  // asserts the plugin is licensed under the
@@ -46,25 +43,11 @@ boost::json::object ir;
 
 const auto kPrintPass = std::make_unique<PrintPass>(g);
 
-constexpr std::string_view kBasicBlocks = "basic_blocks";
-constexpr std::string_view kFunctions = "functions";
-constexpr std::string_view kGimpleType = "gimple_type";
-constexpr std::string_view kIndex = "index";
-constexpr std::string_view kLhs = "lhs";
-constexpr std::string_view kName = "name";
-constexpr std::string_view kPredecessors = "predecessors";
-constexpr std::string_view kRhsClass = "rhs_class";
-constexpr std::string_view kRhsCode = "rhs_code";
-constexpr std::string_view kStatements = "statements";
-constexpr std::string_view kSuccessors = "successors";
-constexpr std::string_view kTreeType = "tree_type";
-constexpr std::string_view kValue = "value";
-
-constexpr std::string_view kGimpleSingleRhs = "GIMPLE_SINGLE_RHS";
-constexpr std::string_view kGimpleUnaryRhs = "GIMPLE_UNARY_RHS";
-constexpr std::string_view kGimpleBinaryRhs = "GIMPLE_BINARY_RHS";
-constexpr std::string_view kGimpleTernaryRhs = "GIMPLE_TERNARY_RHS";
-constexpr std::string_view kGimpleInvalidRhs = "GIMPLE_INVALID_RHS";
+constexpr std::string_view kGimpleSingleRhs = "gimple_single_rhs";
+constexpr std::string_view kGimpleUnaryRhs = "gimple_unary_rhs";
+constexpr std::string_view kGimpleBinaryRhs = "gimple_binary_rhs";
+constexpr std::string_view kGimpleTernaryRhs = "gimple_ternary_rhs";
+constexpr std::string_view kGimpleInvalidRhs = "gimple_invalid_rhs";
 
 constexpr auto kPrintPassData = pass_data{
     .type = GIMPLE_PASS,
@@ -114,11 +97,11 @@ PrintPass* PrintPass::clone() { return this; }
 
 boost::json::object ToObject(const tree tr) {
   auto obj = boost::json::object{};
-  obj[kTreeType] = get_tree_code_name(TREE_CODE(tr));
+  obj["type"] = get_tree_code_name(TREE_CODE(tr));
 
   switch (TREE_CODE(tr)) {
     case INTEGER_CST: {
-      obj[kValue] = TREE_INT_CST_LOW(tr);
+      obj["value"] = TREE_INT_CST_LOW(tr);
       break;
     }
 
@@ -148,7 +131,6 @@ boost::json::object ToObject(const tree tr) {
     }
 
     default: {
-      // TODO
       break;
     }
   }
@@ -158,23 +140,33 @@ boost::json::object ToObject(const tree tr) {
 
 boost::json::object TraverseGimpleAssignStatement(gimple* const stmt) {
   auto stmt_obj = boost::json::object{};
-  stmt_obj[kGimpleType] = "GIMPLE_ASSIGN";
-  stmt_obj[kRhsClass] = ToString(gimple_assign_rhs_class(stmt));
-  stmt_obj[kRhsCode] = get_tree_code_name(gimple_assign_rhs_code(stmt));
-  stmt_obj[kLhs] = ToObject(gimple_assign_lhs(stmt));
-  // TODO: rhs1, rhs2, rhs3
+  stmt_obj["type"] = "gimple_assign";
+  stmt_obj["lhs"] = ToObject(gimple_assign_lhs(stmt));
+
+  const auto rhs_class = gimple_assign_rhs_class(stmt);
+  stmt_obj["rhs_class"] = ToString(rhs_class);
+  stmt_obj["rhs_code"] = get_tree_code_name(gimple_assign_rhs_code(stmt));
+  stmt_obj["rhs1"] = ToObject(gimple_assign_rhs1(stmt));
+
+  if (rhs_class == GIMPLE_BINARY_RHS || rhs_class == GIMPLE_TERNARY_RHS) {
+    stmt_obj["rhs2"] = ToObject(gimple_assign_rhs2(stmt));
+
+    if (rhs_class == GIMPLE_TERNARY_RHS) [[unlikely]] {
+      stmt_obj["rhs3"] = ToObject(gimple_assign_rhs3(stmt));
+    }
+  }
 
   return stmt_obj;
 }
 
 boost::json::object TraverseBasicBlock(const basic_block bb) {
   auto bb_obj = boost::json::object{};
-  bb_obj[kIndex] = bb->index;
+  bb_obj["index"] = bb->index;
 
-  auto& preds = (bb_obj[kPredecessors] = boost::json::array{}).as_array();
+  auto& preds = (bb_obj["predecessors"] = boost::json::array{}).as_array();
   preds.reserve(bb->preds->length());
 
-  auto& succs = (bb_obj[kSuccessors] = boost::json::array{}).as_array();
+  auto& succs = (bb_obj["successors"] = boost::json::array{}).as_array();
   succs.reserve(bb->succs->length());
 
   auto e = edge{};
@@ -183,7 +175,7 @@ boost::json::object TraverseBasicBlock(const basic_block bb) {
   FOR_EACH_EDGE(e, ei, bb->preds) { preds.push_back(e->src->index); }
   FOR_EACH_EDGE(e, ei, bb->succs) { succs.push_back(e->dest->index); }
 
-  auto& stmts = (bb_obj[kStatements] = boost::json::array{}).as_array();
+  auto& stmts = (bb_obj["statements"] = boost::json::array{}).as_array();
   // TODO: reserve
 
   for (auto gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
@@ -206,22 +198,22 @@ boost::json::object TraverseBasicBlock(const basic_block bb) {
 
 unsigned int PrintPass::execute(function* fn) {
   auto fn_obj = boost::json::object{};
-  fn_obj[kName] = function_name(fn);
+  fn_obj["name"] = function_name(fn);
 
-  auto& bbs = (fn_obj[kBasicBlocks] = boost::json::array{}).as_array();
+  auto& bbs = (fn_obj["basic_blocks"] = boost::json::array{}).as_array();
   bbs.reserve(n_basic_blocks_for_fn(fn));
 
   auto bb = basic_block{};
   FOR_EACH_BB_FN(bb, fn) { bbs.push_back(TraverseBasicBlock(bb)); }
 
-  ir[kFunctions].as_array().push_back(std::move(fn_obj));
+  ir["functions"].as_array().push_back(std::move(fn_obj));
 
   return 0;
 }
 
 void PluginStartUnit([[maybe_unused]] void* gcc_data,
                      [[maybe_unused]] void* user_data) {
-  ir[kFunctions] = boost::json::array{};
+  ir["functions"] = boost::json::array{};
 }
 
 void PluginFinish([[maybe_unused]] void* gcc_data,
