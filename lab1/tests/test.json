@@ -1,0 +1,418 @@
+{
+  "functions": [
+    {
+      "name": "Foo",
+      "basic_blocks": [
+        {
+          "index": 2,
+          "predecessors": [
+            0
+          ],
+          "successors": [
+            3
+          ],
+          "statements": [
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "var_decl",
+                "name": "x"
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "constructor",
+              "rhs1": {
+                "type": "constructor"
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "array_ref",
+                "array": {
+                  "type": "component_ref",
+                  "object": {
+                    "type": "var_decl",
+                    "name": "x"
+                  },
+                  "field": {
+                    "type": "field_decl",
+                    "name": "b"
+                  }
+                },
+                "index": {
+                  "type": "integer_cst",
+                  "value": 1
+                }
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "integer_cst",
+              "rhs1": {
+                "type": "integer_cst",
+                "value": 2
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "array_ref",
+                "array": {
+                  "type": "component_ref",
+                  "object": {
+                    "type": "var_decl",
+                    "name": "x"
+                  },
+                  "field": {
+                    "type": "field_decl",
+                    "name": "b"
+                  }
+                },
+                "index": {
+                  "type": "integer_cst",
+                  "value": 2
+                }
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "integer_cst",
+              "rhs1": {
+                "type": "integer_cst",
+                "value": 3
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "component_ref",
+                "object": {
+                  "type": "var_decl",
+                  "name": "x"
+                },
+                "field": {
+                  "type": "field_decl",
+                  "name": "a"
+                }
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "ssa_name",
+              "rhs1": {
+                "type": "ssa_name",
+                "name": "i",
+                "version": 5
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "array_ref",
+                "array": {
+                  "type": "component_ref",
+                  "object": {
+                    "type": "var_decl",
+                    "name": "x"
+                  },
+                  "field": {
+                    "type": "field_decl",
+                    "name": "b"
+                  }
+                },
+                "index": {
+                  "type": "integer_cst",
+                  "value": 0
+                }
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "ssa_name",
+              "rhs1": {
+                "type": "ssa_name",
+                "name": "j",
+                "version": 7
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "name": "y",
+                "version": 9
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "addr_expr",
+              "rhs1": {
+                "type": "addr_expr",
+                "object": {
+                  "type": "array_ref",
+                  "array": {
+                    "type": "component_ref",
+                    "object": {
+                      "type": "var_decl",
+                      "name": "x"
+                    },
+                    "field": {
+                      "type": "field_decl",
+                      "name": "b"
+                    }
+                  },
+                  "index": {
+                    "type": "integer_cst",
+                    "value": 1
+                  }
+                }
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "version": 10
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "mem_ref",
+              "rhs1": {
+                "type": "mem_ref",
+                "base": {
+                  "type": "ssa_name",
+                  "name": "y",
+                  "version": 9
+                },
+                "index": {
+                  "type": "integer_cst",
+                  "value": 0
+                }
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "var_decl",
+                "name": "x"
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "constructor",
+              "rhs1": {
+                "type": "constructor"
+              }
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "predecessors": [
+            2
+          ],
+          "successors": [
+            1
+          ],
+          "statements": [
+            {
+              "type": "gimple_label",
+              "value": {
+                "type": "label_decl"
+              }
+            },
+            {
+              "type": "gimple_return"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "main",
+      "basic_blocks": [
+        {
+          "index": 2,
+          "predecessors": [
+            0
+          ],
+          "successors": [
+            3,
+            4
+          ],
+          "statements": [
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "name": "text",
+                "version": 4
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "addr_expr",
+              "rhs1": {
+                "type": "addr_expr",
+                "object": {
+                  "type": "string_cst",
+                  "value": "some text"
+                }
+              }
+            },
+            {
+              "type": "gimple_call",
+              "lhs": {
+                "type": "ssa_name",
+                "name": "x",
+                "version": 7
+              },
+              "callee_name": "Foo",
+              "callee_args": [
+                {
+                  "type": "real_cst"
+                },
+                {
+                  "type": "integer_cst",
+                  "value": 1
+                }
+              ]
+            },
+            {
+              "type": "gimple_cond",
+              "predicat_code": "eq_expr",
+              "predicat_lhs": {
+                "type": "ssa_name",
+                "name": "text",
+                "version": 4
+              },
+              "predicat_rhs": {
+                "type": "integer_cst",
+                "value": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "predecessors": [
+            2
+          ],
+          "successors": [
+            4
+          ],
+          "statements": [
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "name": "x",
+                "version": 8
+              },
+              "rhs_class": "gimple_binary_rhs",
+              "rhs_code": "mult_expr",
+              "rhs1": {
+                "type": "ssa_name",
+                "name": "x",
+                "version": 7
+              },
+              "rhs2": {
+                "type": "integer_cst",
+                "value": 3
+              }
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "predecessors": [
+            2,
+            3
+          ],
+          "successors": [
+            5
+          ],
+          "statements": [
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "version": 1
+              },
+              "rhs_class": "gimple_unary_rhs",
+              "rhs_code": "float_expr",
+              "rhs1": {
+                "type": "ssa_name",
+                "name": "x",
+                "version": 3,
+                "phi_args": [
+                  {
+                    "type": "ssa_name",
+                    "name": "x",
+                    "version": 7
+                  },
+                  {
+                    "type": "ssa_name",
+                    "name": "x",
+                    "version": 8
+                  }
+                ]
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "version": 2
+              },
+              "rhs_class": "gimple_binary_rhs",
+              "rhs_code": "mult_expr",
+              "rhs1": {
+                "type": "ssa_name",
+                "version": 1
+              },
+              "rhs2": {
+                "type": "real_cst"
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "name": "y",
+                "version": 9
+              },
+              "rhs_class": "gimple_binary_rhs",
+              "rhs_code": "plus_expr",
+              "rhs1": {
+                "type": "ssa_name",
+                "version": 2
+              },
+              "rhs2": {
+                "type": "real_cst"
+              }
+            },
+            {
+              "type": "gimple_assign",
+              "lhs": {
+                "type": "ssa_name",
+                "version": 10
+              },
+              "rhs_class": "gimple_single_rhs",
+              "rhs_code": "integer_cst",
+              "rhs1": {
+                "type": "integer_cst",
+                "value": 0
+              }
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "predecessors": [
+            4
+          ],
+          "successors": [
+            1
+          ],
+          "statements": [
+            {
+              "type": "gimple_label",
+              "value": {
+                "type": "label_decl"
+              }
+            },
+            {
+              "type": "gimple_return"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

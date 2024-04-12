@@ -1,0 +1,20 @@
+{
+  "functions": [
+    {
+      "name": "main", 
+      "basic_blocks": [
+        {
+          "index": 3,
+          "predecessors": [2],
+          "successors": [4, 5],
+          "statements": [
+            {
+              "type": "GIMPLE_ASSIGN",
+              "rhs_class": "GIMPLE_UNARY_RHS"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
