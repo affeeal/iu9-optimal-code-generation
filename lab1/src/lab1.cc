@@ -23,7 +23,6 @@
 #include <boost/json.hpp>
 
 #include "gcc-plugin.h"  // the first gcc header to be included
-#include "tree-core.h"
 #include "tree.h"
 #include "tree-pass.h"
 #include "gimple.h"
@@ -95,7 +94,7 @@ class PrintPass final : public gimple_opt_pass {
 
 PrintPass* PrintPass::clone() { return this; }
 
-boost::json::object ToObject(const tree tr) {
+boost::json::object ToObject(const const_tree tr) {
   auto obj = boost::json::object{};
   obj["type"] = get_tree_code_name(TREE_CODE(tr));
 
@@ -109,6 +108,8 @@ boost::json::object ToObject(const tree tr) {
       if (const auto id = SSA_NAME_IDENTIFIER(tr)) {
         obj["name"] = IDENTIFIER_POINTER(id);
       }
+
+      // TODO: handle non-identifier name
 
       obj["version"] = SSA_NAME_VERSION(tr);
 
@@ -127,6 +128,11 @@ boost::json::object ToObject(const tree tr) {
       break;
     }
 
+    case LABEL_DECL: {
+      obj["uid"] = LABEL_DECL_UID(tr);
+      break;
+    }
+
     default: {
       break;
     }
@@ -135,48 +141,68 @@ boost::json::object ToObject(const tree tr) {
   return obj;
 }
 
-boost::json::object GimpleAssignToObject(gimple* const stmt) {
-  auto stmt_obj = boost::json::object{};
-  stmt_obj["type"] = "gimple_assign";
-  stmt_obj["lhs"] = ToObject(gimple_assign_lhs(stmt));
+boost::json::object GimpleAssignToObject(const gassign* const assign) {
+  auto assign_obj = boost::json::object{};
+  assign_obj["type"] = "gimple_assign";
+  assign_obj["lhs"] = ToObject(gimple_assign_lhs(assign));
 
-  const auto rhs_class = gimple_assign_rhs_class(stmt);
-  stmt_obj["rhs_class"] = ToString(rhs_class);
-  stmt_obj["rhs_code"] = get_tree_code_name(gimple_assign_rhs_code(stmt));
-  stmt_obj["rhs1"] = ToObject(gimple_assign_rhs1(stmt));
+  const auto rhs_class = gimple_assign_rhs_class(assign);
+  assign_obj["rhs_class"] = ToString(rhs_class);
+  assign_obj["rhs_code"] = get_tree_code_name(gimple_assign_rhs_code(assign));
+  assign_obj["rhs1"] = ToObject(gimple_assign_rhs1(assign));
 
   if (rhs_class == GIMPLE_BINARY_RHS || rhs_class == GIMPLE_TERNARY_RHS) {
-    stmt_obj["rhs2"] = ToObject(gimple_assign_rhs2(stmt));
+    assign_obj["rhs2"] = ToObject(gimple_assign_rhs2(assign));
 
     if (rhs_class == GIMPLE_TERNARY_RHS) [[unlikely]] {
-      stmt_obj["rhs3"] = ToObject(gimple_assign_rhs3(stmt));
+      assign_obj["rhs3"] = ToObject(gimple_assign_rhs3(assign));
     }
   }
 
-  return stmt_obj;
+  return assign_obj;
 }
 
-boost::json::object GimpleCallToObject(gimple* const stmt) {
-  auto stmt_obj = boost::json::object{};
-  stmt_obj["type"] = "gimple_call";
+boost::json::object GimpleCallToObject(const gcall* const call) {
+  auto call_obj = boost::json::object{};
+  call_obj["type"] = "gimple_call";
 
-  if (const auto tr = gimple_call_lhs(stmt)) {
-    stmt_obj["lhs"] = ToObject(tr);
+  if (const auto tr = gimple_call_lhs(call)) {
+    call_obj["lhs"] = ToObject(tr);
   }
 
   // TODO: gimple_call_fn, gimple_call_return_type?
 
-  stmt_obj["callee_name"] = fndecl_name(gimple_call_fndecl(stmt));
+  call_obj["callee_name"] = fndecl_name(gimple_call_fndecl(call));
 
-  const auto args_num = gimple_call_num_args(stmt);
-  auto& args = (stmt_obj["callee_args"] = boost::json::array{}).as_array();
+  const auto args_num = gimple_call_num_args(call);
+  auto& args = (call_obj["callee_args"] = boost::json::array{}).as_array();
   args.reserve(args_num);
 
   for (std::size_t i = 0; i < args_num; ++i) {
-    args.push_back(ToObject(gimple_call_arg(stmt, i)));
+    args.push_back(ToObject(gimple_call_arg(call, i)));
   }
 
-  return stmt_obj;
+  return call_obj;
+}
+
+boost::json::object GimpleCondToObject(const gcond* const cond) {
+  auto cond_obj = boost::json::object{};
+  cond_obj["type"] = "gimple_cond";
+  cond_obj["predicat_code"] = get_tree_code_name(gimple_cond_code(cond));
+  cond_obj["predicat_lhs"] = ToObject(gimple_cond_lhs(cond));
+  cond_obj["predicat_rhs"] = ToObject(gimple_cond_rhs(cond));
+
+  // TODO: gimple_cond_{true,false}_label
+
+  return cond_obj;
+}
+
+boost::json::object GimpleLabelToObject(const glabel* const label) {
+  auto label_obj = boost::json::object{};
+  label_obj["type"] = "gimple_label";
+  label_obj["label"] = ToObject(gimple_label_label(label));
+
+  return label_obj;
 }
 
 boost::json::object BasicBlockToObject(const basic_block bb) {
@@ -203,12 +229,22 @@ boost::json::object BasicBlockToObject(const basic_block bb) {
 
     switch (gimple_code(stmt)) {
       case GIMPLE_ASSIGN: {
-        stmts.push_back(GimpleAssignToObject(stmt));
+        stmts.push_back(GimpleAssignToObject(static_cast<gassign*>(stmt)));
         break;
       }
 
       case GIMPLE_CALL: {
-        stmts.push_back(GimpleCallToObject(stmt));
+        stmts.push_back(GimpleCallToObject(static_cast<gcall*>(stmt)));
+        break;
+      }
+
+      case GIMPLE_COND: {
+        stmts.push_back(GimpleCondToObject(static_cast<gcond*>(stmt)));
+        break;
+      }
+
+      case GIMPLE_LABEL: {
+        stmts.push_back(GimpleLabelToObject(static_cast<glabel*>(stmt)));
         break;
       }
 
