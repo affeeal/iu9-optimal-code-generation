@@ -1,16 +1,23 @@
-int x;
+// Completely pointless programm to parse.
 
-void Foo() {
+struct Baz {
+  double a;
+  int b[3];
+};
+
+int Foo(const double i, const int j) {
+  Baz x = {i, {j, 2, 3}};
+  int* y = &x.b[1];
+  return *y;
 }
 
 int main() {
-  x = 1;
-  auto y = x < 2;
-  auto z = !y;
-  
-  if (x > 3) {
-    x += 4;
+  const char* text = "some text";
+
+  int x = Foo(1.5, 1);
+  if (!text) {
+    x *= 3; 
   }
 
-  auto w = 5 * x + 6;
+  double y = 4 + 0.5 * x;
 }

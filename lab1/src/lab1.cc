@@ -23,6 +23,7 @@
 #include <boost/json.hpp>
 
 #include "gcc-plugin.h"  // the first gcc header to be included
+#include "real.h"
 #include "tree.h"
 #include "tree-pass.h"
 #include "gimple.h"
@@ -94,26 +95,71 @@ class PrintPass final : public gimple_opt_pass {
 
 PrintPass* PrintPass::clone() { return this; }
 
-boost::json::object ToObject(const const_tree tr) {
+boost::json::object ToObject(const const_tree t) {
   auto obj = boost::json::object{};
-  obj["type"] = get_tree_code_name(TREE_CODE(tr));
+  obj["type"] = get_tree_code_name(TREE_CODE(t));
 
-  switch (TREE_CODE(tr)) {
+  switch (TREE_CODE(t)) {
     case INTEGER_CST: {
-      obj["value"] = TREE_INT_CST_LOW(tr);
+      obj["value"] = TREE_INT_CST_LOW(t);
+      break;
+    }
+
+    case STRING_CST: {
+      obj["value"] = TREE_STRING_POINTER(t);
+      break;
+    }
+
+    case LABEL_DECL: {
+      [[fallthrough]];
+    }
+
+    case CONST_DECL: {
+      [[fallthrough]];
+    }
+
+    case VAR_DECL: {
+      [[fallthrough]];
+    }
+
+    case FIELD_DECL: {
+      if (const auto id = DECL_NAME(t)) {
+        obj["name"] = IDENTIFIER_POINTER(id);
+      }
+      break;
+    }
+
+    case ARRAY_REF: {
+      obj["array"] = ToObject(TREE_OPERAND(t, 0));
+      obj["index"] = ToObject(TREE_OPERAND(t, 1));
+      break;
+    }
+
+    case COMPONENT_REF: {
+      obj["object"] = ToObject(TREE_OPERAND(t, 0));
+      obj["field"] = ToObject(TREE_OPERAND(t, 1));
+      break;
+    }
+
+    case ADDR_EXPR: {
+      obj["object"] = ToObject(TREE_OPERAND(t, 0));
+      break;
+    }
+
+    case MEM_REF: {
+      obj["base"] = ToObject(TREE_OPERAND(t, 0));
+      obj["index"] = ToObject(TREE_OPERAND(t, 1));
       break;
     }
 
     case SSA_NAME: {
-      if (const auto id = SSA_NAME_IDENTIFIER(tr)) {
+      if (const auto id = SSA_NAME_IDENTIFIER(t)) {
         obj["name"] = IDENTIFIER_POINTER(id);
       }
 
-      // TODO: handle non-identifier name
+      obj["version"] = SSA_NAME_VERSION(t);
 
-      obj["version"] = SSA_NAME_VERSION(tr);
-
-      if (const auto stmt = SSA_NAME_DEF_STMT(tr);
+      if (const auto stmt = SSA_NAME_DEF_STMT(t);
           gimple_code(stmt) == GIMPLE_PHI) {
         const auto args_num = gimple_phi_num_args(stmt);
 
@@ -128,12 +174,9 @@ boost::json::object ToObject(const const_tree tr) {
       break;
     }
 
-    case LABEL_DECL: {
-      obj["uid"] = LABEL_DECL_UID(tr);
-      break;
-    }
-
     default: {
+      std::cerr << "Ignore TREE_CODE " << get_tree_code_name(TREE_CODE(t))
+                << "\n";
       break;
     }
   }
