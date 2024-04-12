@@ -108,9 +108,6 @@ boost::json::object ToObject(const tree tr) {
     case SSA_NAME: {
       if (const auto id = SSA_NAME_IDENTIFIER(tr)) {
         obj["name"] = IDENTIFIER_POINTER(id);
-      } else {
-        // TODO: отобразить "индекс" переменной?
-        obj["name"] = nullptr;
       }
 
       obj["version"] = SSA_NAME_VERSION(tr);
@@ -138,7 +135,7 @@ boost::json::object ToObject(const tree tr) {
   return obj;
 }
 
-boost::json::object TraverseGimpleAssignStatement(gimple* const stmt) {
+boost::json::object GimpleAssignToObject(gimple* const stmt) {
   auto stmt_obj = boost::json::object{};
   stmt_obj["type"] = "gimple_assign";
   stmt_obj["lhs"] = ToObject(gimple_assign_lhs(stmt));
@@ -159,7 +156,30 @@ boost::json::object TraverseGimpleAssignStatement(gimple* const stmt) {
   return stmt_obj;
 }
 
-boost::json::object TraverseBasicBlock(const basic_block bb) {
+boost::json::object GimpleCallToObject(gimple* const stmt) {
+  auto stmt_obj = boost::json::object{};
+  stmt_obj["type"] = "gimple_call";
+
+  if (const auto tr = gimple_call_lhs(stmt)) {
+    stmt_obj["lhs"] = ToObject(tr);
+  }
+
+  // TODO: gimple_call_fn, gimple_call_return_type?
+
+  stmt_obj["callee_name"] = fndecl_name(gimple_call_fndecl(stmt));
+
+  const auto args_num = gimple_call_num_args(stmt);
+  auto& args = (stmt_obj["callee_args"] = boost::json::array{}).as_array();
+  args.reserve(args_num);
+
+  for (std::size_t i = 0; i < args_num; ++i) {
+    args.push_back(ToObject(gimple_call_arg(stmt, i)));
+  }
+
+  return stmt_obj;
+}
+
+boost::json::object BasicBlockToObject(const basic_block bb) {
   auto bb_obj = boost::json::object{};
   bb_obj["index"] = bb->index;
 
@@ -183,7 +203,12 @@ boost::json::object TraverseBasicBlock(const basic_block bb) {
 
     switch (gimple_code(stmt)) {
       case GIMPLE_ASSIGN: {
-        stmts.push_back(TraverseGimpleAssignStatement(stmt));
+        stmts.push_back(GimpleAssignToObject(stmt));
+        break;
+      }
+
+      case GIMPLE_CALL: {
+        stmts.push_back(GimpleCallToObject(stmt));
         break;
       }
 
@@ -204,7 +229,7 @@ unsigned int PrintPass::execute(function* fn) {
   bbs.reserve(n_basic_blocks_for_fn(fn));
 
   auto bb = basic_block{};
-  FOR_EACH_BB_FN(bb, fn) { bbs.push_back(TraverseBasicBlock(bb)); }
+  FOR_EACH_BB_FN(bb, fn) { bbs.push_back(BasicBlockToObject(bb)); }
 
   ir["functions"].as_array().push_back(std::move(fn_obj));
 
