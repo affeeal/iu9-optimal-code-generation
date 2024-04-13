@@ -23,7 +23,6 @@
 #include <boost/json.hpp>
 
 #include "gcc-plugin.h"  // the first gcc header to be included
-#include "real.h"
 #include "tree.h"
 #include "tree-pass.h"
 #include "gimple.h"
@@ -209,11 +208,9 @@ boost::json::object GcallToObject(const gcall* const call) {
   auto call_obj = boost::json::object{};
   call_obj["type"] = "gimple_call";
 
-  if (const auto tr = gimple_call_lhs(call)) {
-    call_obj["lhs"] = ToObject(tr);
+  if (const auto t = gimple_call_lhs(call)) {
+    call_obj["lhs"] = ToObject(t);
   }
-
-  // TODO: gimple_call_fn, gimple_call_return_type?
 
   call_obj["callee_name"] = fndecl_name(gimple_call_fndecl(call));
 
@@ -234,8 +231,6 @@ boost::json::object GcondToObject(const gcond* const cond) {
   cond_obj["predicat_code"] = get_tree_code_name(gimple_cond_code(cond));
   cond_obj["predicat_lhs"] = ToObject(gimple_cond_lhs(cond));
   cond_obj["predicat_rhs"] = ToObject(gimple_cond_rhs(cond));
-
-  // TODO: gimple_cond_{true,false}_label
 
   return cond_obj;
 }
@@ -272,7 +267,6 @@ boost::json::object BasicBlockToObject(const basic_block bb) {
   FOR_EACH_EDGE(e, ei, bb->succs) { succs.push_back(e->dest->index); }
 
   auto& stmts = (bb_obj["statements"] = boost::json::array{}).as_array();
-  // TODO: reserve
 
   for (auto gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
     auto* stmt = gsi_stmt(gsi);
@@ -304,7 +298,7 @@ boost::json::object BasicBlockToObject(const basic_block bb) {
       }
 
       default: {
-        std::cerr << "Unsupported GIMPLE code " << gimple_code(stmt) << "\n";
+        std::cerr << "Ignored GIMPLE_CODE " << gimple_code(stmt) << "\n";
         break;
       }
     }
