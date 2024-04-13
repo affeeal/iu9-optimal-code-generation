@@ -1,4 +1,4 @@
 build
 .cache
-.aux
-.log
+*.aux
+*.log
