@@ -109,18 +109,9 @@ boost::json::object ToObject(const const_tree t) {
       break;
     }
 
-    case LABEL_DECL: {
-      [[fallthrough]];
-    }
-
-    case CONST_DECL: {
-      [[fallthrough]];
-    }
-
-    case VAR_DECL: {
-      [[fallthrough]];
-    }
-
+    case LABEL_DECL:
+    case CONST_DECL:
+    case VAR_DECL:
     case FIELD_DECL: {
       if (const auto id = DECL_NAME(t)) {
         obj["name"] = IDENTIFIER_POINTER(id);
