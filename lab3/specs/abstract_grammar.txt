@@ -1,0 +1,14 @@
+Program -> FuncDef
+FuncDef -> IDENT ( FuncParams ) Scope
+FuncParams -> FuncParams1 | empty
+FuncParams1 -> IDENT | FuncParams1 , IDENT
+Scope -> { Stmts }
+Stmts -> Stmt | Stmts Stmt
+Stmt -> VarDef | RetStmt | IfStmt | WhileStmt
+VarDef -> IDENT = Expr ;
+RetStmt -> return Expr ;
+IfStmt -> if ( Expr ) Scope else Scope
+WhileStmt -> while ( Expr ) Scope
+Expr -> Expr BinOp Expr | UnOp Expr | IDENT | NUMBER | ( Expr )
+BinOp -> == | != | < | > | <= | >= | +  | -  | || | *  | /  | % | &&
+UnOp ->  -  | !

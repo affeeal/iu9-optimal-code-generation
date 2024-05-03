@@ -5,12 +5,19 @@
 
 %define api.namespace {frontend} 
 %define api.parser.class {Parser}
-
+%define api.token.prefix {TOK_}
 %define api.token.raw
-
 %define api.token.constructor
 %define api.value.type variant
+
 %define parse.assert
+%define parse.error detailed
+%define parse.trace
+%define parse.lac full
+
+%locations
+
+%parse-param {frontend::Scanner& scanner}
 
 %code requires {
 
@@ -23,14 +30,6 @@ class Scanner;
 
 }
 
-%parse-param {frontend::Scanner& scanner}
-
-%locations
-
-%define parse.trace
-%define parse.error detailed
-%define parse.lac full
-
 %code {
 
 #include "driver.h"
@@ -39,42 +38,54 @@ class Scanner;
 
 }
 
-%define api.token.prefix {TOK_}
+%token <std::string>   IDENT   "identifier";
+%token <std::int64_t>  NUMBER  "number";
 
 %token
-  AS   "="
-  CM   ","
-  SC   ";"
-  LP   "("
-  RP   ")"
-  LCB  "{"
-  RCB  "}"
-
-  EQ  "=="
-  NE  "!="
-  LT  "<"
-  LE  "<="
-  GT  ">"
-  GE  ">="
-
-  NOT  "!"
-  OR   "||"
-  AND  "&&"
-
-  PLUS     "+"
-  MINUS    "-"
-  STAR     "*"
-  SLASH    "/"
-  PERCENT  "%"
-
   IF      "if"
   ELSE    "else"
   WHILE   "while"
   RETURN  "return"
-; 
 
-%token <std::string>   IDENT   "identifier";
-%token <std::int64_t>  NUMBER  "number";
+  ASSIGN     "="
+  COMMA      ","
+  SEMICOLON  ";"
+
+  LEFT_PARENTHESIS     "("
+  RIGHT_PARENTHESIS    ")"
+  LEFT_CURLY_BRACKET   "{"
+  RIGHT_CURLY_BRACKET  "}"
+;
+
+%nonassoc
+  CMP_OP
+  EQUAL          "=="
+  NOT_EQUAL      "!="
+  LESS           "<"
+  GREATER        ">"
+  LESS_EQUAL     "<="
+  GREATER_EQUAL  ">="
+;
+
+%left
+  ADD_OP
+  PLUS   "+"
+  MINUS  "-"
+  OR     "||"
+;
+  
+%left 
+  MUL_OP
+  STAR     "*"
+  SLASH    "/"
+  PERCENT  "%"
+  AND      "&&"
+;
+
+%precedence
+  UN_OP
+  EXCLAMATORY  "!"
+;
 
 %%
 
@@ -100,38 +111,27 @@ stmt: var_def
 
 var_def: IDENT "=" expr ";"
 
-ret_stmt: "return" expr ";"
+ret_stmt: RETURN expr ";"
 
-if_stmt: "if" "(" expr ")" scope opt_else
+if_stmt: IF "(" expr ")" scope ELSE scope
 
-opt_else: "else" scope
-        | %empty
+while_stmt: WHILE "(" expr ")" scope
 
-while_stmt: "while" "(" expr ")" scope
+expr: expr cmp_op expr %prec CMP_OP
+    | expr add_op expr %prec ADD_OP
+    | expr mul_op expr %prec MUL_OP
+    | un_op expr %prec UN_OP
+    | IDENT
+    | NUMBER
+    | "(" expr ")"
 
-expr: arithm_expr
-    | expr cmp_op arithm_expr
+cmp_op: EQUAL | NOT_EQUAL | LESS | GREATER | GREATER_EQUAL | LESS_EQUAL
 
-cmp_op: "==" | "!=" | "<" | ">" | "<=" | ">="
+add_op: PLUS | MINUS | OR
 
-arithm_expr: term
-           | arithm_expr add_op term
+mul_op: STAR | SLASH | PERCENT | AND
 
-add_op: "+" | "-" | "||"
-
-term: factor
-    | term mul_op factor
-
-mul_op: "*" | "/" | "%" | "&&"
-
-factor: atom |
-        un_op atom
-
-un_op: "-" | "!"
-
-atom: IDENT
-      | NUMBER
-      | "(" expr ")"
+un_op: MINUS | EXCLAMATORY
 
 %%
 

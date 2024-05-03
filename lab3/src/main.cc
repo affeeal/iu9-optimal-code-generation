@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
 
   const auto filename = std::string{argv[1]};
 
-  auto driver = frontend::Driver{true, true};
+  auto driver = frontend::Driver{false, true};
   [[maybe_unused]] const auto is_success =
       driver.Parse(file, std::cout, &filename);
 }

@@ -28,24 +28,24 @@ NUMBER  [0-9]+
 
 \n+       { loc_.lines(yyleng); loc_.step(); }
 
-"="       { return Parser::make_AS(loc_); } 
-","       { return Parser::make_CM(loc_); }
-";"       { return Parser::make_SC(loc_); }
-"("       { return Parser::make_LP(loc_); }
-")"       { return Parser::make_RP(loc_); }
-"{"       { return Parser::make_LCB(loc_); }
-"}"       { return Parser::make_RCB(loc_); }
+"="       { return Parser::make_ASSIGN(loc_); } 
+","       { return Parser::make_COMMA(loc_); }
+";"       { return Parser::make_SEMICOLON(loc_); }
+"("       { return Parser::make_LEFT_PARENTHESIS(loc_); }
+")"       { return Parser::make_RIGHT_PARENTHESIS(loc_); }
+"{"       { return Parser::make_LEFT_CURLY_BRACKET(loc_); }
+"}"       { return Parser::make_RIGHT_CURLY_BRACKET(loc_); }
 
-"=="      { return Parser::make_EQ(loc_); }
-"!="      { return Parser::make_NE(loc_); }
-"<"       { return Parser::make_LT(loc_); }
-"<="      { return Parser::make_LE(loc_); }
-">"       { return Parser::make_GT(loc_); }
-">="      { return Parser::make_GE(loc_); }
+"=="      { return Parser::make_EQUAL(loc_); }
+"!="      { return Parser::make_NOT_EQUAL(loc_); }
+"<"       { return Parser::make_LESS(loc_); }
+"<="      { return Parser::make_LESS_EQUAL(loc_); }
+">"       { return Parser::make_GREATER(loc_); }
+">="      { return Parser::make_GREATER_EQUAL(loc_); }
 
 "||"      { return Parser::make_OR(loc_); }
 "&&"      { return Parser::make_AND(loc_); }
-"!"       { return Parser::make_NOT(loc_); }
+"!"       { return Parser::make_EXCLAMATORY(loc_); }
 
 "+"       { return Parser::make_PLUS(loc_); }
 "-"       { return Parser::make_MINUS(loc_); }
