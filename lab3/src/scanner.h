@@ -10,8 +10,8 @@
 #undef YY_DECL
 #define YY_DECL frontend::Parser::symbol_type frontend::Scanner::Get()
 
-#include "location.hh"
-#include "parser.tab.hh"
+#include "location.h"
+#include "parser.h"
 
 namespace frontend {
 

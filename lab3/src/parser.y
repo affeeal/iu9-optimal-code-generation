@@ -2,12 +2,15 @@
 %language "c++"
 %skeleton "lalr1.cc"
 %header
+%locations
 
+%define api.location.file "location.h"
 %define api.namespace {frontend} 
 %define api.parser.class {Parser}
 %define api.token.prefix {TOK_}
 %define api.token.raw
 %define api.token.constructor
+%define api.value.automove
 %define api.value.type variant
 
 %define parse.assert
@@ -15,22 +18,25 @@
 %define parse.trace
 %define parse.lac full
 
-%locations
-
 %parse-param {frontend::Scanner& scanner}
+%parse-param {frontend::Driver& driver}
 
 %code requires {
 
+#include "node.h"
+
 namespace frontend {
 
-class Parser;
+class Driver;
 class Scanner;
 
 }  // namespace frontend
 
 }
 
-%code {
+%code top {
+
+#include <memory>
 
 #include "driver.h"
 
@@ -55,7 +61,6 @@ class Scanner;
   RIGHT_PARENTHESIS    ")"
   LEFT_CURLY_BRACKET   "{"
   RIGHT_CURLY_BRACKET  "}"
-;
 
 %nonassoc
   CMP_OP
@@ -65,14 +70,12 @@ class Scanner;
   GREATER        ">"
   LESS_EQUAL     "<="
   GREATER_EQUAL  ">="
-;
 
 %left
   ADD_OP
   PLUS   "+"
   MINUS  "-"
   OR     "||"
-;
   
 %left 
   MUL_OP
@@ -80,58 +83,183 @@ class Scanner;
   SLASH    "/"
   PERCENT  "%"
   AND      "&&"
-;
 
 %precedence
   UN_OP
   EXCLAMATORY  "!"
-;
+
+%nterm <std::vector<std::unique_ptr<frontend::FuncDef>>> func_defs
+%nterm <std::unique_ptr<frontend::FuncDef>> func_def
+%nterm <std::vector<std::string>> func_params_opt
+%nterm <std::vector<std::string>> func_params
+%nterm <std::unique_ptr<frontend::Scope>> scope
+%nterm <std::vector<std::unique_ptr<frontend::IStmt>>> stmts
+%nterm <std::unique_ptr<frontend::IStmt>> stmt
+%nterm <std::unique_ptr<frontend::AssignStmt>> assign_stmt
+%nterm <std::unique_ptr<frontend::ReturnStmt>> return_stmt
+%nterm <std::unique_ptr<frontend::IfStmt>> if_stmt
+%nterm <std::unique_ptr<frontend::WhileStmt>> while_stmt
+%nterm <std::unique_ptr<frontend::IExpr>> expr
+%nterm <frontend::ExprOp> cmp_op
+%nterm <frontend::ExprOp> add_op
+%nterm <frontend::ExprOp> mul_op
+%nterm <frontend::ExprOp> un_op
 
 %%
 
-program: func_def
+program:
+  func_defs
+  {
+    driver.program_ = std::make_unique<frontend::Program>($1);
+  }
 
-func_def: IDENT "(" func_params ")" scope
 
-func_params: func_params1
-           | %empty
+func_defs:
+  func_def
+  {
+    $$.push_back($1);
+  }
+| func_defs func_def
+  {
+    $$ = $1;
+    $$.push_back($2);
+  }
 
-func_params1: IDENT
-            | func_params1 "," IDENT
 
-scope: "{" stmts "}"
+func_def:
+  IDENT "(" func_params_opt ")" scope
+  {
+    $$ = std::make_unique<frontend::FuncDef>($1, $3, $5);
+  }
 
-stmts: stmt
-     | stmts stmt
 
-stmt: var_def
-    | ret_stmt
-    | if_stmt
-    | while_stmt
+func_params_opt:
+  func_params
+| %empty { }
 
-var_def: IDENT "=" expr ";"
 
-ret_stmt: RETURN expr ";"
+func_params:
+  IDENT
+  {
+    $$.push_back($1);
+  }
+| func_params "," IDENT
+  {
+    $$ = $1;
+    $$.push_back($3);
+  }
 
-if_stmt: IF "(" expr ")" scope ELSE scope
 
-while_stmt: WHILE "(" expr ")" scope
+scope:
+  "{" stmts "}"
+  {
+    $$ = std::make_unique<frontend::Scope>($2);
+  }
 
-expr: expr cmp_op expr %prec CMP_OP
-    | expr add_op expr %prec ADD_OP
-    | expr mul_op expr %prec MUL_OP
-    | un_op expr %prec UN_OP
-    | IDENT
-    | NUMBER
-    | "(" expr ")"
 
-cmp_op: EQUAL | NOT_EQUAL | LESS | GREATER | GREATER_EQUAL | LESS_EQUAL
+stmts:
+  stmt
+  {
+    $$.push_back($1);
+  }
+| stmts stmt
+  {
+    $$ = $1;
+    $$.push_back($2);
+  }
 
-add_op: PLUS | MINUS | OR
 
-mul_op: STAR | SLASH | PERCENT | AND
+stmt:
+  assign_stmt  { $$ = $1; }
+| return_stmt  { $$ = $1; }
+| if_stmt      { $$ = $1; }
+| while_stmt   { $$ = $1; }
 
-un_op: MINUS | EXCLAMATORY
+
+assign_stmt:
+  IDENT "=" expr ";"
+  {
+    $$ = std::make_unique<frontend::AssignStmt>($1, $3);
+  }
+
+
+return_stmt:
+  RETURN expr ";"
+  {
+    $$ = std::make_unique<frontend::ReturnStmt>($2);
+  }
+
+
+if_stmt:
+  IF "(" expr ")" scope ELSE scope
+  {
+    $$ = std::make_unique<frontend::IfStmt>($3, $5, $7);
+  }
+
+
+while_stmt:
+  WHILE "(" expr ")" scope
+  {
+    $$ = std::make_unique<frontend::WhileStmt>($3, $5);
+  }
+
+
+expr:
+  expr cmp_op expr %prec CMP_OP
+  {
+    $$ = std::make_unique<frontend::BinaryExpr>($1, $3, $2);
+  }
+| expr add_op expr %prec ADD_OP
+  {
+    $$ = std::make_unique<frontend::BinaryExpr>($1, $3, $2);
+  }
+| expr mul_op expr %prec MUL_OP
+  {
+    $$ = std::make_unique<frontend::BinaryExpr>($1, $3, $2);
+  }
+| un_op expr %prec UN_OP
+  {
+    $$ = std::make_unique<frontend::UnaryExpr>($2, $1);
+  }
+| IDENT
+  {
+    $$ = std::make_unique<frontend::VarExpr>($1);
+  }
+| NUMBER
+  {
+    $$ = std::make_unique<frontend::NumberExpr>($1);
+  }
+| "(" expr ")"
+  {
+    $$ = $2;
+  }
+
+
+cmp_op:
+  EQUAL          { $$ = frontend::ExprOp::kEq; }
+| NOT_EQUAL      { $$ = frontend::ExprOp::kNe; }
+| LESS           { $$ = frontend::ExprOp::kLt; }
+| GREATER        { $$ = frontend::ExprOp::kGt; }
+| GREATER_EQUAL  { $$ = frontend::ExprOp::kGe; }
+| LESS_EQUAL     { $$ = frontend::ExprOp::kLe; }
+
+
+add_op:
+  PLUS   { $$ = frontend::ExprOp::kAdd; }
+| MINUS  { $$ = frontend::ExprOp::kSub; }
+| OR     { $$ = frontend::ExprOp::kOr; }
+
+
+mul_op:
+  STAR     { $$ = frontend::ExprOp::kMul; }
+| SLASH    { $$ = frontend::ExprOp::kDiv; }
+| PERCENT  { $$ = frontend::ExprOp::kMod; }
+| AND      { $$ = frontend::ExprOp::kAnd; }
+
+
+un_op:
+  MINUS        { $$ = frontend::ExprOp::kNeg; }
+| EXCLAMATORY  { $$ = frontend::ExprOp::kNot; }
 
 %%
 
