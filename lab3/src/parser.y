@@ -90,6 +90,7 @@ class Scanner;
 
 %nterm <std::vector<std::unique_ptr<frontend::FuncDef>>> func_defs
 %nterm <std::unique_ptr<frontend::FuncDef>> func_def
+%nterm <std::unique_ptr<frontend::FuncProto>> func_proto
 %nterm <std::vector<std::string>> func_params_opt
 %nterm <std::vector<std::string>> func_params
 %nterm <std::unique_ptr<frontend::Scope>> scope
@@ -127,9 +128,16 @@ func_defs:
 
 
 func_def:
-  IDENT "(" func_params_opt ")" scope
+  func_proto scope
   {
-    $$ = std::make_unique<frontend::FuncDef>($1, $3, $5);
+    $$ = std::make_unique<frontend::FuncDef>($1, $2);
+  }
+
+
+func_proto:
+  IDENT "(" func_params_opt ")"
+  {
+    $$ = std::make_unique<frontend::FuncProto>($1, $3);
   }
 
 
@@ -264,5 +272,6 @@ un_op:
 %%
 
 void frontend::Parser::error(const location_type& loc, const std::string& msg) {
+  // TODO: handle the error.
   std::cerr << loc << ':' << msg << '\n';
 }

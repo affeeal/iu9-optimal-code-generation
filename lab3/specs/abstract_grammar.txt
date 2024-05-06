@@ -1,6 +1,12 @@
+// TODO: add
+// - function return type;
+// - function declaration;
+// - top-level variable definition;
+
 Program -> FuncDefs
 FuncDefs -> FuncDef | FuncDefs FuncDef
-FuncDef -> IDENT ( FuncParamsOpt ) Scope
+FuncDef -> FuncProto Scope
+FuncProto -> IDENT ( FuncParamsOpt ) 
 FuncParamsOpt -> FuncParams | empty
 FuncParams -> IDENT | FuncParams , IDENT
 Scope -> { Stmts }
@@ -12,4 +18,4 @@ IfStmt -> if ( Expr ) Scope else Scope
 WhileStmt -> while ( Expr ) Scope
 Expr -> Expr BinOp Expr | UnOp Expr | IDENT | NUMBER | ( Expr )
 BinOp -> == | != | < | > | <= | >= | +  | -  | || | *  | /  | % | &&
-UnOp ->  -  | !
+UnOp ->  - | !

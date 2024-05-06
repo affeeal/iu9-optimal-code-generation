@@ -45,13 +45,11 @@ NUMBER  [0-9]+
 
 "||"      { return Parser::make_OR(loc_); }
 "&&"      { return Parser::make_AND(loc_); }
-"!"       { return Parser::make_EXCLAMATORY(loc_); }
 
 "+"       { return Parser::make_PLUS(loc_); }
 "-"       { return Parser::make_MINUS(loc_); }
 "*"       { return Parser::make_STAR(loc_); }
 "/"       { return Parser::make_SLASH(loc_); }
-"%"       { return Parser::make_PERCENT(loc_); }
 
 "if"      { return Parser::make_IF(loc_); }
 "else"    { return Parser::make_ELSE(loc_); }

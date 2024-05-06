@@ -4,9 +4,12 @@
 #include <string>
 #include <vector>
 
+#include "codegen.h"
+
 namespace frontend {
 
 // TODO: store symbols in the table.
+// TODO: ExprOp to string.
 
 class FuncDef;
 class Scope;
@@ -31,47 +34,52 @@ enum class ExprOp {
   kNot,
 };
 
-class Program final {
+class INode {
+ public:
+  virtual ~INode() = default;
+  virtual llvm::Value* Codegen(CGContext& context) const = 0;
+
+ protected:
+  INode() = default;
+  INode(const INode&) = delete;
+  INode& operator=(const INode&) = delete;
+};
+
+class Program final : public INode {
   std::vector<std::unique_ptr<FuncDef>> func_defs_;
 
  public:
-  Program(std::vector<std::unique_ptr<FuncDef>>&& func_defs)
-      : func_defs_(std::move(func_defs)) {}
-
-  Program(const Program&) = delete;
-  Program& operator=(const Program&) = delete;
+  Program(std::vector<std::unique_ptr<FuncDef>>&& func_defs);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
-class FuncDef final {
+class FuncProto final : public INode {
   std::string name_;
   std::vector<std::string> params_;
+
+ public:
+  FuncProto(std::string&& name, std::vector<std::string>&& params);
+  llvm::Value* Codegen(CGContext& context) const override;
+};
+
+class FuncDef final : public INode {
+  std::unique_ptr<FuncProto> proto_;
   std::unique_ptr<Scope> body_;
 
  public:
-  FuncDef(std::string&& name, std::vector<std::string>&& params,
-          std::unique_ptr<Scope>&& body)
-      : name_(std::move(name)),
-        params_(std::move(params)),
-        body_(std::move(body)) {}
-
-  FuncDef(const FuncDef&) = delete;
-  FuncDef& operator==(const FuncDef&) = delete;
+  FuncDef(std::unique_ptr<FuncProto>&& proto, std::unique_ptr<Scope>&& body);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
-class Scope final {
+class Scope final : public INode {
   std::vector<std::unique_ptr<IStmt>> stmts_;
 
  public:
-  Scope(std::vector<std::unique_ptr<IStmt>>&& stmts)
-      : stmts_(std::move(stmts)) {}
-
-  Scope(const Scope&) = delete;
-  Scope& operator==(const Scope&) = delete;
+  Scope(std::vector<std::unique_ptr<IStmt>>&& stmts);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
-// TODO: delete copy ctor and assignment.
-
-class IStmt {
+class IStmt : public INode {
  public:
   virtual ~IStmt() = default;
 };
@@ -81,15 +89,16 @@ class AssignStmt final : public IStmt {
   std::unique_ptr<IExpr> expr_;
 
  public:
-  AssignStmt(std::string&& var_name, std::unique_ptr<IExpr>&& expr)
-      : var_name_(std::move(var_name)), expr_(std::move(expr)) {}
+  AssignStmt(std::string&& var_name, std::unique_ptr<IExpr>&& expr);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 class ReturnStmt final : public IStmt {
   std::unique_ptr<IExpr> expr_;
 
  public:
-  ReturnStmt(std::unique_ptr<IExpr>&& expr) : expr_(std::move(expr)) {}
+  ReturnStmt(std::unique_ptr<IExpr>&& expr);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 class IfStmt final : public IStmt {
@@ -98,10 +107,8 @@ class IfStmt final : public IStmt {
 
  public:
   IfStmt(std::unique_ptr<IExpr>&& cond, std::unique_ptr<Scope>&& then,
-         std::unique_ptr<Scope>&& otherwise)
-      : cond_(std::move(cond)),
-        then_(std::move(then)),
-        otherwise_(std::move(otherwise)) {}
+         std::unique_ptr<Scope>&& otherwise);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 class WhileStmt final : public IStmt {
@@ -109,11 +116,11 @@ class WhileStmt final : public IStmt {
   std::unique_ptr<Scope> body_;
 
  public:
-  WhileStmt(std::unique_ptr<IExpr>&& cond, std::unique_ptr<Scope>&& body)
-      : cond_(std::move(cond)), body_(std::move(body)) {}
+  WhileStmt(std::unique_ptr<IExpr>&& cond, std::unique_ptr<Scope>&& body);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
-class IExpr {
+class IExpr : public INode {
  public:
   virtual ~IExpr() = default;
 };
@@ -124,8 +131,8 @@ class BinaryExpr final : public IExpr {
 
  public:
   BinaryExpr(std::unique_ptr<IExpr>&& lhs, std::unique_ptr<IExpr>&& rhs,
-             const ExprOp op)
-      : lhs_(std::move(lhs)), rhs_(std::move(rhs)), op_(op) {}
+             const ExprOp op);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 class UnaryExpr final : public IExpr {
@@ -133,22 +140,24 @@ class UnaryExpr final : public IExpr {
   ExprOp op_;
 
  public:
-  UnaryExpr(std::unique_ptr<IExpr>&& expr, const ExprOp op)
-      : expr_(std::move(expr)), op_(op) {}
+  UnaryExpr(std::unique_ptr<IExpr>&& expr, const ExprOp op);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 class VarExpr final : public IExpr {
   std::string name_;
 
  public:
-  VarExpr(std::string&& name) : name_(std::move(name)) {}
+  VarExpr(std::string&& name);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 class NumberExpr final : public IExpr {
   std::int64_t value_;
 
  public:
-  NumberExpr(const std::int64_t value) : value_(value) {}
+  NumberExpr(const std::int64_t value);
+  llvm::Value* Codegen(CGContext& context) const override;
 };
 
 }  // namespace frontend
