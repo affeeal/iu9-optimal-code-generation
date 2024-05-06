@@ -4,12 +4,11 @@
 #include <string>
 #include <vector>
 
-#include "codegen.h"
+#include "code_generator.h"
 
 namespace frontend {
 
-// TODO: store symbols in the table.
-// TODO: ExprOp to string.
+// TODO: store symbols in the table. TODO: convert ExprOp to string.
 
 class FuncDef;
 class Scope;
@@ -37,20 +36,20 @@ enum class ExprOp {
 class INode {
  public:
   virtual ~INode() = default;
-  virtual llvm::Value* Codegen(CGContext& context) const = 0;
 
- protected:
-  INode() = default;
-  INode(const INode&) = delete;
-  INode& operator=(const INode&) = delete;
+ public:
+  virtual void Accept(IVisitor& visitor) = 0;
 };
 
 class Program final : public INode {
   std::vector<std::unique_ptr<FuncDef>> func_defs_;
 
  public:
-  Program(std::vector<std::unique_ptr<FuncDef>>&& func_defs);
-  llvm::Value* Codegen(CGContext& context) const override;
+  Program(std::vector<std::unique_ptr<FuncDef>>&& func_defs)
+      : func_defs_(std::move(func_defs)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override;
 };
 
 class FuncProto final : public INode {
@@ -58,8 +57,11 @@ class FuncProto final : public INode {
   std::vector<std::string> params_;
 
  public:
-  FuncProto(std::string&& name, std::vector<std::string>&& params);
-  llvm::Value* Codegen(CGContext& context) const override;
+  FuncProto(std::string&& name, std::vector<std::string>&& params)
+      : name_(std::move(name)), params_(std::move(params)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class FuncDef final : public INode {
@@ -67,16 +69,22 @@ class FuncDef final : public INode {
   std::unique_ptr<Scope> body_;
 
  public:
-  FuncDef(std::unique_ptr<FuncProto>&& proto, std::unique_ptr<Scope>&& body);
-  llvm::Value* Codegen(CGContext& context) const override;
+  FuncDef(std::unique_ptr<FuncProto>&& proto, std::unique_ptr<Scope>&& body)
+      : proto_(std::move(proto)), body_(std::move(body)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class Scope final : public INode {
   std::vector<std::unique_ptr<IStmt>> stmts_;
 
  public:
-  Scope(std::vector<std::unique_ptr<IStmt>>&& stmts);
-  llvm::Value* Codegen(CGContext& context) const override;
+  Scope(std::vector<std::unique_ptr<IStmt>>&& stmts)
+      : stmts_(std::move(stmts)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class IStmt : public INode {
@@ -89,16 +97,21 @@ class AssignStmt final : public IStmt {
   std::unique_ptr<IExpr> expr_;
 
  public:
-  AssignStmt(std::string&& var_name, std::unique_ptr<IExpr>&& expr);
-  llvm::Value* Codegen(CGContext& context) const override;
+  AssignStmt(std::string&& var_name, std::unique_ptr<IExpr>&& expr)
+      : var_name_(std::move(var_name)), expr_(std::move(expr)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class ReturnStmt final : public IStmt {
   std::unique_ptr<IExpr> expr_;
 
  public:
-  ReturnStmt(std::unique_ptr<IExpr>&& expr);
-  llvm::Value* Codegen(CGContext& context) const override;
+  ReturnStmt(std::unique_ptr<IExpr>&& expr) : expr_(std::move(expr)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class IfStmt final : public IStmt {
@@ -107,8 +120,13 @@ class IfStmt final : public IStmt {
 
  public:
   IfStmt(std::unique_ptr<IExpr>&& cond, std::unique_ptr<Scope>&& then,
-         std::unique_ptr<Scope>&& otherwise);
-  llvm::Value* Codegen(CGContext& context) const override;
+         std::unique_ptr<Scope>&& otherwise)
+      : cond_(std::move(cond)),
+        then_(std::move(then)),
+        otherwise_(std::move(otherwise)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class WhileStmt final : public IStmt {
@@ -116,8 +134,11 @@ class WhileStmt final : public IStmt {
   std::unique_ptr<Scope> body_;
 
  public:
-  WhileStmt(std::unique_ptr<IExpr>&& cond, std::unique_ptr<Scope>&& body);
-  llvm::Value* Codegen(CGContext& context) const override;
+  WhileStmt(std::unique_ptr<IExpr>&& cond, std::unique_ptr<Scope>&& body)
+      : cond_(std::move(cond)), body_(std::move(body)) {}
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class IExpr : public INode {
@@ -130,34 +151,63 @@ class BinaryExpr final : public IExpr {
   ExprOp op_;
 
  public:
+  // TODO: check lhs, rhs for non-null.
   BinaryExpr(std::unique_ptr<IExpr>&& lhs, std::unique_ptr<IExpr>&& rhs,
-             const ExprOp op);
-  llvm::Value* Codegen(CGContext& context) const override;
+             const ExprOp op)
+      : lhs_(std::move(lhs)), rhs_(std::move(rhs)), op_(op) {}
+
+  const IExpr& get_lhs() const noexcept { return *lhs_; }
+  IExpr& get_lhs() noexcept { return *lhs_; }
+
+  const IExpr& get_rhs() const noexcept { return *rhs_; }
+  IExpr& get_rhs() noexcept { return *rhs_; }
+
+  ExprOp get_op() const noexcept { return op_; }
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class UnaryExpr final : public IExpr {
-  std::unique_ptr<IExpr> expr_;
+  std::unique_ptr<IExpr> subject_;
   ExprOp op_;
 
  public:
-  UnaryExpr(std::unique_ptr<IExpr>&& expr, const ExprOp op);
-  llvm::Value* Codegen(CGContext& context) const override;
+  // TODO: check subject for non-null.
+  UnaryExpr(std::unique_ptr<IExpr>&& subject, const ExprOp op)
+      : subject_(std::move(subject)), op_(op) {}
+
+  const IExpr& get_subject() const noexcept { return *subject_; }
+  IExpr& get_subject() noexcept { return *subject_; }
+
+  ExprOp get_op() const noexcept { return op_; }
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class VarExpr final : public IExpr {
   std::string name_;
 
  public:
-  VarExpr(std::string&& name);
-  llvm::Value* Codegen(CGContext& context) const override;
+  VarExpr(std::string&& name) : name_(std::move(name)) {}
+
+  const std::string& get_name() const noexcept { return name_; }
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 class NumberExpr final : public IExpr {
   std::int64_t value_;
 
  public:
-  NumberExpr(const std::int64_t value);
-  llvm::Value* Codegen(CGContext& context) const override;
+  NumberExpr(const std::int64_t value) : value_(value) {}
+
+  std::int64_t get_value() const noexcept { return value_; }
+
+ public:
+  void Accept(IVisitor& visitor) override { visitor.Visit(*this); }
 };
 
 }  // namespace frontend
