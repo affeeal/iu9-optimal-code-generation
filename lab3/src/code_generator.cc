@@ -4,45 +4,78 @@
 
 namespace frontend {
 
+void CodeGenerator::Scope::Add(const std::string& name,
+                               llvm::AllocaInst* const alloc) {
+  named_allocs_[name] = alloc;
+}
+
+llvm::AllocaInst* CodeGenerator::Scope::Visible(const std::string& name) const {
+  if (auto* const alloc = Find(name)) {
+    return alloc;
+  }
+
+  return parent_ ? parent_->Find(name) : nullptr;
+}
+
+llvm::AllocaInst* CodeGenerator::Scope::Find(const std::string& name) const {
+  if (const auto it = named_allocs_.find(name); it != named_allocs_.cend()) {
+    return it->second;
+  }
+
+  return nullptr;
+}
+
 CodeGenerator::CodeGenerator()
     : context_(std::make_unique<llvm::LLVMContext>()),
-      module_(std::make_unique<llvm::Module>("a module", *context_)),
-      builder_(std::make_unique<llvm::IRBuilder<>>(*context_)) {}
+      module_(std::make_unique<llvm::Module>("ParaParaCL", *context_)),
+      builder_(std::make_unique<llvm::IRBuilder<>>(*context_)) {
+  auto* const func_type =
+      llvm::FunctionType::get(llvm::Type::getInt64Ty(*context_), false);
+  main_ = llvm::Function::Create(func_type, llvm::Function::ExternalLinkage,
+                                 "main", module_.get());
+
+  auto* const bb = llvm::BasicBlock::Create(*context_, "entry", main_);
+  builder_->SetInsertPoint(bb);
+}
+
+llvm::AllocaInst* CodeGenerator::CreateEntryBlockAlloca(
+    const std::string& name) {
+  auto& entry_block = main_->getEntryBlock();
+  auto builder = llvm::IRBuilder<>(&entry_block, entry_block.begin());
+  return builder.CreateAlloca(llvm::Type::getInt64Ty(*context_), nullptr, name);
+}
 
 llvm::Value* CodeGenerator::AcceptAndReturn(INode& node) {
   node.Accept(*this);
   return return_;
 }
 
-llvm::AllocaInst* CodeGenerator::CreateEntryBlockAlloca(
-    llvm::Function& function, const std::string& name) {
-  auto& entry_block = function.getEntryBlock();
-  auto builder = llvm::IRBuilder<>(&entry_block, entry_block.begin());
-  return builder.CreateAlloca(llvm::Type::getInt64Ty(*context_), nullptr, name);
-}
-
 void CodeGenerator::Visit(Program& program) {
-  // TODO
-}
+  const auto scope = std::make_unique<Scope>(nullptr);
+  scope_ = scope.get();
 
-void CodeGenerator::Visit(FuncProto& proto) {
-  // TODO
-}
-
-void CodeGenerator::Visit(FuncDef& def) {
-  // TODO
-}
-
-void CodeGenerator::Visit(Scope& scope) {
-  // TODO
+  for (auto it = program.get_stmts_cbegin(), end = program.get_stmts_cend();
+       it != end; ++it) {
+    it->get()->Accept(*this);
+  }
 }
 
 void CodeGenerator::Visit(AssignStmt& stmt) {
-  // TODO
+  auto* const rhs = AcceptAndReturn(stmt.get_expr());
+
+  const auto& name = stmt.get_name();
+  auto* lhs = scope_->Visible(name);
+  if (!lhs) {
+    lhs = CreateEntryBlockAlloca(name);
+    scope_->Add(name, lhs);
+  }
+
+  builder_->CreateStore(rhs, lhs);
 }
 
 void CodeGenerator::Visit(ReturnStmt& stmt) {
-  // TODO
+  auto* const expr = AcceptAndReturn(stmt.get_expr());
+  builder_->CreateRet(expr);
 }
 
 void CodeGenerator::Visit(IfStmt& stmt) {
@@ -58,78 +91,74 @@ void CodeGenerator::Visit(BinaryExpr& expr) {
   auto* const rhs = AcceptAndReturn(expr.get_rhs());
 
   switch (expr.get_op()) {
-    case ExprOp::kAdd: {
+    using enum BinaryExpr::Op;
+    case kAdd: {
       return_ = builder_->CreateAdd(lhs, rhs, "addtmp");
       break;
     }
-    case ExprOp::kSub: {
+    case kSub: {
       return_ = builder_->CreateSub(lhs, rhs, "subtmp");
       break;
     }
-    case ExprOp::kMul: {
+    case kMul: {
       return_ = builder_->CreateMul(lhs, rhs, "multmp");
       break;
     }
-    case ExprOp::kDiv: {
+    case kDiv: {
       return_ = builder_->CreateSDiv(lhs, rhs, "divtmp");
       break;
     }
-    case ExprOp::kMod: {
+    case kMod: {
       return_ = builder_->CreateSRem(lhs, rhs, "modtmp");
       break;
     }
-    case ExprOp::kEq: {
+    case kEq: {
       return_ = builder_->CreateICmpEQ(lhs, rhs, "eqtmp");
       break;
     }
-    case ExprOp::kNe: {
+    case kNe: {
       return_ = builder_->CreateICmpNE(lhs, rhs, "netmp");
       break;
     }
-    case ExprOp::kLt: {
+    case kLt: {
       return_ = builder_->CreateICmpSLT(lhs, rhs, "lttmp");
       break;
     }
-    case ExprOp::kGt: {
+    case kGt: {
       return_ = builder_->CreateICmpSGT(lhs, rhs, "gttmp");
       break;
     }
-    case ExprOp::kLe: {
+    case kLe: {
       return_ = builder_->CreateICmpSLE(lhs, rhs, "letmp");
       break;
     }
-    case ExprOp::kGe: {
+    case kGe: {
       return_ = builder_->CreateICmpSGE(lhs, rhs, "getmp");
       break;
     }
-    case ExprOp::kAnd: {
+    case kAnd: {
       return_ = builder_->CreateAnd(lhs, rhs, "andtmp");
       break;
     }
-    case ExprOp::kOr: {
+    case kOr: {
       return_ = builder_->CreateOr(lhs, rhs, "ortmp");
       break;
-    }
-    default: {
-      throw std::runtime_error("Invalid binary operator");
     }
   }
 }
 
 void CodeGenerator::Visit(UnaryExpr& expr) {
-  auto* const subject = AcceptAndReturn(expr);
+  auto* const value = AcceptAndReturn(expr);
 
   switch (expr.get_op()) {
-    case ExprOp::kNeg: {
-      return_ = builder_->CreateNeg(subject, "negtmp");
+    using enum UnaryExpr::Op;
+    case kNeg: {
+      return_ = builder_->CreateNeg(value, "negtmp");
       break;
     }
-    case ExprOp::kNot: {
-      return_ = builder_->CreateNot(subject, "nottmp");
+    case kNot: {
+      return_ = builder_->CreateNot(value, "nottmp");
       break;
-    }
-    default: {
-      throw std::runtime_error("Invalid unary operator");
     }
   }
 }
@@ -137,19 +166,20 @@ void CodeGenerator::Visit(UnaryExpr& expr) {
 void CodeGenerator::Visit(VarExpr& expr) {
   const auto& name = expr.get_name();
 
-  const auto it = named_allocas_.find(name);
-  if (it == named_allocas_.cend()) {
+  auto* const alloc = scope_->Visible(name);
+  if (!alloc) {
     throw std::runtime_error("Unknown variable " + name);
   }
 
-  auto* alloca = it->second;
   return_ =
-      builder_->CreateLoad(alloca->getAllocatedType(), alloca, name.c_str());
+      builder_->CreateLoad(alloc->getAllocatedType(), alloc, name.c_str());
 }
 
 void CodeGenerator::Visit(NumberExpr& expr) {
   return_ = llvm::ConstantInt::get(*context_,
                                    llvm::APInt(64, expr.get_value(), true));
 }
+
+void CodeGenerator::Dump() const { module_->dump(); }
 
 }  // namespace frontend

@@ -2,15 +2,11 @@
 
 namespace frontend {
 
-class INode;
 class Program;
-class FuncProto;
-class FuncDef;
-class Scope;
 class AssignStmt;
-class ReturnStmt;
 class IfStmt;
 class WhileStmt;
+class ReturnStmt;
 class BinaryExpr;
 class UnaryExpr;
 class VarExpr;
@@ -22,9 +18,6 @@ class IVisitor {
 
  public:
   virtual void Visit(Program& program) = 0;
-  virtual void Visit(FuncProto& proto) = 0;
-  virtual void Visit(FuncDef& def) = 0;
-  virtual void Visit(Scope& scope) = 0;
   virtual void Visit(AssignStmt& stmt) = 0;
   virtual void Visit(ReturnStmt& stmt) = 0;
   virtual void Visit(IfStmt& stmt) = 0;

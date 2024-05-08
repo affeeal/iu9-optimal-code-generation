@@ -1,21 +1,10 @@
-// TODO: add
-// - function return type;
-// - function declaration;
-// - top-level variable definition;
-
-Program -> FuncDefs
-FuncDefs -> FuncDef | FuncDefs FuncDef
-FuncDef -> FuncProto Scope
-FuncProto -> IDENT ( FuncParamsOpt ) 
-FuncParamsOpt -> FuncParams | empty
-FuncParams -> IDENT | FuncParams , IDENT
-Scope -> { Stmts }
+Program -> Stmts
 Stmts -> Stmt | Stmts Stmt
-Stmt -> AssignStmt | ReturnStmt | IfStmt | WhileStmt
+Stmt -> AssignStmt | IfStmt | WhileStmt | ReturnStmt
 AssignStmt -> IDENT = Expr ;
+IfStmt -> if ( Expr ) { Stmts } else { Stmts }
+WhileStmt -> while ( Expr ) { Stmts }
 ReturnStmt -> return Expr ;
-IfStmt -> if ( Expr ) Scope else Scope
-WhileStmt -> while ( Expr ) Scope
 Expr -> Expr BinOp Expr | UnOp Expr | IDENT | NUMBER | ( Expr )
 BinOp -> == | != | < | > | <= | >= | +  | -  | || | *  | /  | % | &&
 UnOp ->  - | !

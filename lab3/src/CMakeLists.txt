@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(C--)
+project(ParaParaCL)
 
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)

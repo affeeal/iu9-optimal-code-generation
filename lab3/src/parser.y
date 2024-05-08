@@ -1,6 +1,7 @@
 %require "3.8.2"
 %language "c++"
 %skeleton "lalr1.cc"
+
 %header
 %locations
 
@@ -36,6 +37,7 @@ class Scanner;
 
 %code top {
 
+#include <sstream>
 #include <memory>
 
 #include "driver.h"
@@ -88,82 +90,25 @@ class Scanner;
   UN_OP
   EXCLAMATORY  "!"
 
-%nterm <std::vector<std::unique_ptr<frontend::FuncDef>>> func_defs
-%nterm <std::unique_ptr<frontend::FuncDef>> func_def
-%nterm <std::unique_ptr<frontend::FuncProto>> func_proto
-%nterm <std::vector<std::string>> func_params_opt
-%nterm <std::vector<std::string>> func_params
-%nterm <std::unique_ptr<frontend::Scope>> scope
 %nterm <std::vector<std::unique_ptr<frontend::IStmt>>> stmts
 %nterm <std::unique_ptr<frontend::IStmt>> stmt
 %nterm <std::unique_ptr<frontend::AssignStmt>> assign_stmt
-%nterm <std::unique_ptr<frontend::ReturnStmt>> return_stmt
 %nterm <std::unique_ptr<frontend::IfStmt>> if_stmt
 %nterm <std::unique_ptr<frontend::WhileStmt>> while_stmt
+%nterm <std::unique_ptr<frontend::ReturnStmt>> return_stmt
 %nterm <std::unique_ptr<frontend::IExpr>> expr
-%nterm <frontend::ExprOp> cmp_op
-%nterm <frontend::ExprOp> add_op
-%nterm <frontend::ExprOp> mul_op
-%nterm <frontend::ExprOp> un_op
+%nterm <frontend::BinaryExpr::Op> cmp_op
+%nterm <frontend::BinaryExpr::Op> add_op
+%nterm <frontend::BinaryExpr::Op> mul_op
+%nterm <frontend::UnaryExpr::Op> un_op
 
 %%
 
 program:
-  func_defs
+  stmts
   {
-    driver.program_ = std::make_unique<frontend::Program>($1);
+    driver.set_program(std::make_unique<frontend::Program>($1));
   }
-
-
-func_defs:
-  func_def
-  {
-    $$.push_back($1);
-  }
-| func_defs func_def
-  {
-    $$ = $1;
-    $$.push_back($2);
-  }
-
-
-func_def:
-  func_proto scope
-  {
-    $$ = std::make_unique<frontend::FuncDef>($1, $2);
-  }
-
-
-func_proto:
-  IDENT "(" func_params_opt ")"
-  {
-    $$ = std::make_unique<frontend::FuncProto>($1, $3);
-  }
-
-
-func_params_opt:
-  func_params
-| %empty { }
-
-
-func_params:
-  IDENT
-  {
-    $$.push_back($1);
-  }
-| func_params "," IDENT
-  {
-    $$ = $1;
-    $$.push_back($3);
-  }
-
-
-scope:
-  "{" stmts "}"
-  {
-    $$ = std::make_unique<frontend::Scope>($2);
-  }
-
 
 stmts:
   stmt
@@ -176,13 +121,23 @@ stmts:
     $$.push_back($2);
   }
 
-
 stmt:
-  assign_stmt  { $$ = $1; }
-| return_stmt  { $$ = $1; }
-| if_stmt      { $$ = $1; }
-| while_stmt   { $$ = $1; }
-
+  assign_stmt
+  {
+    $$ = $1;
+  }
+| if_stmt
+  {
+    $$ = $1;
+  }
+| while_stmt
+  {
+    $$ = $1;
+  }
+| return_stmt
+  {
+    $$ = $1;
+  }
 
 assign_stmt:
   IDENT "=" expr ";"
@@ -190,27 +145,23 @@ assign_stmt:
     $$ = std::make_unique<frontend::AssignStmt>($1, $3);
   }
 
+if_stmt:
+  IF "(" expr ")" "{" stmts "}" ELSE "{" stmts "}"
+  {
+    $$ = std::make_unique<frontend::IfStmt>($3, $6, $10);
+  }
+
+while_stmt:
+  WHILE "(" expr ")" "{" stmts "}"
+  {
+    $$ = std::make_unique<frontend::WhileStmt>($3, $6);
+  }
 
 return_stmt:
   RETURN expr ";"
   {
     $$ = std::make_unique<frontend::ReturnStmt>($2);
   }
-
-
-if_stmt:
-  IF "(" expr ")" scope ELSE scope
-  {
-    $$ = std::make_unique<frontend::IfStmt>($3, $5, $7);
-  }
-
-
-while_stmt:
-  WHILE "(" expr ")" scope
-  {
-    $$ = std::make_unique<frontend::WhileStmt>($3, $5);
-  }
-
 
 expr:
   expr cmp_op expr %prec CMP_OP
@@ -242,36 +193,76 @@ expr:
     $$ = $2;
   }
 
-
 cmp_op:
-  EQUAL          { $$ = frontend::ExprOp::kEq; }
-| NOT_EQUAL      { $$ = frontend::ExprOp::kNe; }
-| LESS           { $$ = frontend::ExprOp::kLt; }
-| GREATER        { $$ = frontend::ExprOp::kGt; }
-| GREATER_EQUAL  { $$ = frontend::ExprOp::kGe; }
-| LESS_EQUAL     { $$ = frontend::ExprOp::kLe; }
-
+  EQUAL
+  {
+    $$ = frontend::BinaryExpr::Op::kEq;
+  }
+| NOT_EQUAL
+  {
+    $$ = frontend::BinaryExpr::Op::kNe;
+  }
+| LESS
+  {
+    $$ = frontend::BinaryExpr::Op::kLt;
+  }
+| GREATER
+  {
+    $$ = frontend::BinaryExpr::Op::kGt;
+  }
+| GREATER_EQUAL
+  {
+    $$ = frontend::BinaryExpr::Op::kGe;
+  }
+| LESS_EQUAL
+  {
+    $$ = frontend::BinaryExpr::Op::kLe;
+  }
 
 add_op:
-  PLUS   { $$ = frontend::ExprOp::kAdd; }
-| MINUS  { $$ = frontend::ExprOp::kSub; }
-| OR     { $$ = frontend::ExprOp::kOr; }
-
+  PLUS
+  {
+    $$ = frontend::BinaryExpr::Op::kAdd;
+  }
+| MINUS
+  {
+    $$ = frontend::BinaryExpr::Op::kSub;
+  }
+| OR
+  {
+    $$ = frontend::BinaryExpr::Op::kOr;
+  }
 
 mul_op:
-  STAR     { $$ = frontend::ExprOp::kMul; }
-| SLASH    { $$ = frontend::ExprOp::kDiv; }
-| PERCENT  { $$ = frontend::ExprOp::kMod; }
-| AND      { $$ = frontend::ExprOp::kAnd; }
-
+  STAR
+  {
+    $$ = frontend::BinaryExpr::Op::kMul;
+  }
+| SLASH
+  {
+    $$ = frontend::BinaryExpr::Op::kDiv;
+  }
+| PERCENT
+  {
+    $$ = frontend::BinaryExpr::Op::kMod;
+  }
+| AND
+  {
+    $$ = frontend::BinaryExpr::Op::kAnd;
+  }
 
 un_op:
-  MINUS        { $$ = frontend::ExprOp::kNeg; }
-| EXCLAMATORY  { $$ = frontend::ExprOp::kNot; }
+  MINUS
+  {
+    $$ = frontend::UnaryExpr::Op::kNeg;
+  }
+| EXCLAMATORY
+  {
+    $$ = frontend::UnaryExpr::Op::kNot;
+  }
 
 %%
 
 void frontend::Parser::error(const location_type& loc, const std::string& msg) {
-  // TODO: handle the error.
-  std::cerr << loc << ':' << msg << '\n';
+  throw syntax_error(loc, msg);
 }
