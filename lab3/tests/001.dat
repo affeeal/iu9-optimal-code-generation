@@ -1,11 +1,14 @@
-x = 1;
+a = 0;
+b = 1;
 
-if (x > 2) {
-  y = x + 1;
-  x = y;
-} else {
-  y = 2 * x;
-  x = y;
+n = 10;
+i = 0;
+while (i < n) {
+  c = b;
+  b = a + b;
+  a = c;
+
+  i = i + 1;
 }
 
-return x;
+return b;

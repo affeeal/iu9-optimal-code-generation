@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) try {
   auto code_generator = frontend::CodeGenerator{};
   program->Accept(code_generator);
 
-  code_generator.Dump();
+  code_generator.Print();
 } catch (const std::exception& e) {
   std::cerr << e.what() << std::endl;
 }

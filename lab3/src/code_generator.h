@@ -24,7 +24,7 @@ class CodeGenerator final : public IVisitor {
   void Visit(VarExpr& expr) override;
   void Visit(NumberExpr& expr) override;
 
-  void Dump();
+  void Print();
 
  private:
   class Impl;

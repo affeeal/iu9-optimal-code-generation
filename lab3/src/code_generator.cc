@@ -1,7 +1,7 @@
 #include "code_generator.h"
 
 // clang-format off
-#include "llvm/IR/Function.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/IR/IRBuilder.h"
 // clang-format on
 
@@ -63,7 +63,7 @@ class CodeGenerator::Impl final {
   void Visit(CodeGenerator& visitor, VarExpr& expr);
   void Visit(CodeGenerator& visitor, NumberExpr& expr);
 
-  void Dump();
+  void Print();
 
  private:
   llvm::AllocaInst* CreateEntryBlockAlloca(const std::string& name);
@@ -101,6 +101,8 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, Program& program) {
        it != end; ++it) {
     it->get()->Accept(visitor);
   }
+
+  llvm::verifyFunction(*main_, &llvm::errs());
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, AssignStmt& stmt) {
@@ -125,9 +127,9 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
   auto* const cond = AcceptAndReturn(visitor, stmt.get_cond());
   auto* const then_bb = llvm::BasicBlock::Create(*context_, "then", main_);
   auto* const else_bb = llvm::BasicBlock::Create(*context_, "else", main_);
-  auto* const merge_bb = llvm::BasicBlock::Create(*context_, "ifcont", main_);
-
   builder_->CreateCondBr(cond, then_bb, else_bb);
+
+  auto* const cont_bb = llvm::BasicBlock::Create(*context_, "cont", main_);
 
   {
     const auto then_scope = std::make_unique<Scope>(scope_);
@@ -137,7 +139,7 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
          it != end; ++it) {
       it->get()->Accept(visitor);
     }
-    builder_->CreateBr(merge_bb);
+    builder_->CreateBr(cont_bb);
     scope_ = scope_->get_parent();
   }
 
@@ -149,15 +151,40 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
          it != end; ++it) {
       it->get()->Accept(visitor);
     }
-    builder_->CreateBr(merge_bb);
+    builder_->CreateBr(cont_bb);
     scope_ = scope_->get_parent();
   }
 
-  builder_->SetInsertPoint(merge_bb);
+  builder_->SetInsertPoint(cont_bb);
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, WhileStmt& stmt) {
-  // TODO
+  auto* const while_bb = llvm::BasicBlock::Create(*context_, "while", main_);
+
+  builder_->CreateBr(while_bb);
+  builder_->SetInsertPoint(while_bb);
+
+  auto* const cond = AcceptAndReturn(visitor, stmt.get_cond());
+  auto* const do_bb = llvm::BasicBlock::Create(*context_, "do", main_);
+  auto* const cont_bb = llvm::BasicBlock::Create(*context_, "cont", main_);
+
+  builder_->CreateCondBr(cond, do_bb, cont_bb);
+
+  {
+    const auto do_scope = std::make_unique<Scope>(scope_);
+    scope_ = do_scope.get();
+
+    builder_->SetInsertPoint(do_bb);
+    for (auto it = stmt.get_stmts_cbegin(), end = stmt.get_stmts_cend();
+         it != end; ++it) {
+      it->get()->Accept(visitor);
+    }
+    builder_->CreateBr(while_bb);
+
+    scope_ = scope_->get_parent();
+  }
+
+  builder_->SetInsertPoint(cont_bb);
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, BinaryExpr& expr) {
@@ -254,7 +281,7 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, NumberExpr& expr) {
                                    llvm::APInt(64, expr.get_value(), true));
 }
 
-void CodeGenerator::Impl::Dump() { module_->dump(); }
+void CodeGenerator::Impl::Print() { module_->print(llvm::outs(), nullptr); }
 
 llvm::AllocaInst* CodeGenerator::Impl::CreateEntryBlockAlloca(
     const std::string& name) {
@@ -284,6 +311,6 @@ void CodeGenerator::Visit(UnaryExpr& expr) { impl_->Visit(*this, expr); }
 void CodeGenerator::Visit(VarExpr& expr) { impl_->Visit(*this, expr); }
 void CodeGenerator::Visit(NumberExpr& expr) { impl_->Visit(*this, expr); }
 
-void CodeGenerator::Dump() { impl_->Dump(); }
+void CodeGenerator::Print() { impl_->Print(); }
 
 }  // namespace frontend
