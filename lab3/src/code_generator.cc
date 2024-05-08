@@ -49,17 +49,21 @@ class CodeGenerator::Impl final {
  public:
   Impl();
 
-  llvm::LLVMContext* get_context() noexcept { return context_.get(); }
-  llvm::Module* get_module() noexcept { return module_.get(); }
-  llvm::IRBuilder<>* get_builder() noexcept { return builder_.get(); }
+  void Visit(CodeGenerator& visitor, Program& program);
+  void Visit(CodeGenerator& visitor, AssignStmt& stmt);
+  void Visit(CodeGenerator& visitor, IfStmt& stmt);
+  void Visit(CodeGenerator& visitor, WhileStmt& stmt);
+  void Visit(CodeGenerator& visitor, ReturnStmt& stmt);
+  void Visit(CodeGenerator& visitor, BinaryExpr& expr);
+  void Visit(CodeGenerator& visitor, UnaryExpr& expr);
+  void Visit(CodeGenerator& visitor, VarExpr& expr);
+  void Visit(CodeGenerator& visitor, NumberExpr& expr);
 
-  void set_return(llvm::Value* value) noexcept { return_ = value; }
-  llvm::Value* get_return() noexcept { return return_; }
+  void Dump();
 
-  void set_scope(Scope* scope) noexcept { scope_ = scope; }
-  Scope* get_scope() noexcept { return scope_; }
-
+ private:
   llvm::AllocaInst* CreateEntryBlockAlloca(const std::string& name);
+  llvm::Value* AcceptAndReturn(CodeGenerator& visitor, INode& node);
 
  private:
   std::unique_ptr<llvm::LLVMContext> context_;
@@ -85,6 +89,138 @@ CodeGenerator::Impl::Impl()
   builder_->SetInsertPoint(bb);
 }
 
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, Program& program) {
+  const auto scope = std::make_unique<Scope>(nullptr);
+  scope_ = scope.get();
+
+  for (auto it = program.get_stmts_cbegin(), end = program.get_stmts_cend();
+       it != end; ++it) {
+    it->get()->Accept(visitor);
+  }
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, AssignStmt& stmt) {
+  auto* const rhs = AcceptAndReturn(visitor, stmt.get_expr());
+
+  const auto& name = stmt.get_name();
+  auto* lhs = scope_->Visible(name);
+  if (!lhs) {
+    lhs = CreateEntryBlockAlloca(name);
+    scope_->Add(name, lhs);
+  }
+
+  builder_->CreateStore(rhs, lhs);
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, ReturnStmt& stmt) {
+  auto* const expr = AcceptAndReturn(visitor, stmt.get_expr());
+  builder_->CreateRet(expr);
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
+  // TODO
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, WhileStmt& stmt) {
+  // TODO
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, BinaryExpr& expr) {
+  auto* const lhs = AcceptAndReturn(visitor, expr.get_lhs());
+  auto* const rhs = AcceptAndReturn(visitor, expr.get_rhs());
+
+  switch (expr.get_op()) {
+    using enum BinaryExpr::Op;
+    case kAdd: {
+      return_ = builder_->CreateAdd(lhs, rhs, "addtmp");
+      break;
+    }
+    case kSub: {
+      return_ = builder_->CreateSub(lhs, rhs, "subtmp");
+      break;
+    }
+    case kMul: {
+      return_ = builder_->CreateMul(lhs, rhs, "multmp");
+      break;
+    }
+    case kDiv: {
+      return_ = builder_->CreateSDiv(lhs, rhs, "divtmp");
+      break;
+    }
+    case kMod: {
+      return_ = builder_->CreateSRem(lhs, rhs, "modtmp");
+      break;
+    }
+    case kEq: {
+      return_ = builder_->CreateICmpEQ(lhs, rhs, "eqtmp");
+      break;
+    }
+    case kNe: {
+      return_ = builder_->CreateICmpNE(lhs, rhs, "netmp");
+      break;
+    }
+    case kLt: {
+      return_ = builder_->CreateICmpSLT(lhs, rhs, "lttmp");
+      break;
+    }
+    case kGt: {
+      return_ = builder_->CreateICmpSGT(lhs, rhs, "gttmp");
+      break;
+    }
+    case kLe: {
+      return_ = builder_->CreateICmpSLE(lhs, rhs, "letmp");
+      break;
+    }
+    case kGe: {
+      return_ = builder_->CreateICmpSGE(lhs, rhs, "getmp");
+      break;
+    }
+    case kAnd: {
+      return_ = builder_->CreateAnd(lhs, rhs, "andtmp");
+      break;
+    }
+    case kOr: {
+      return_ = builder_->CreateOr(lhs, rhs, "ortmp");
+      break;
+    }
+  }
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, UnaryExpr& expr) {
+  auto* const value = AcceptAndReturn(visitor, expr);
+
+  switch (expr.get_op()) {
+    using enum UnaryExpr::Op;
+    case kNeg: {
+      return_ = builder_->CreateNeg(value, "negtmp");
+      break;
+    }
+    case kNot: {
+      return_ = builder_->CreateNot(value, "nottmp");
+      break;
+    }
+  }
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, VarExpr& expr) {
+  const auto& name = expr.get_name();
+
+  auto* const alloc = scope_->Visible(name);
+  if (!alloc) {
+    throw std::runtime_error("Unknown variable " + name);
+  }
+
+  return_ =
+      builder_->CreateLoad(alloc->getAllocatedType(), alloc, name.c_str());
+}
+
+void CodeGenerator::Impl::Visit(CodeGenerator& visitor, NumberExpr& expr) {
+  return_ = llvm::ConstantInt::get(*context_,
+                                   llvm::APInt(64, expr.get_value(), true));
+}
+
+void CodeGenerator::Impl::Dump() { module_->dump(); }
+
 llvm::AllocaInst* CodeGenerator::Impl::CreateEntryBlockAlloca(
     const std::string& name) {
   auto& entry_block = main_->getEntryBlock();
@@ -92,147 +228,27 @@ llvm::AllocaInst* CodeGenerator::Impl::CreateEntryBlockAlloca(
   return builder.CreateAlloca(llvm::Type::getInt64Ty(*context_), nullptr, name);
 }
 
+llvm::Value* CodeGenerator::Impl::AcceptAndReturn(CodeGenerator& code_generator,
+                                                  INode& node) {
+  node.Accept(code_generator);
+  return return_;
+}
+
 CodeGenerator::CodeGenerator()
     : impl_(std::make_unique<CodeGenerator::Impl>()) {}
 
 CodeGenerator::~CodeGenerator() = default;
 
-llvm::Value* CodeGenerator::AcceptAndReturn(INode& node) {
-  node.Accept(*this);
-  return impl_->get_return();
-}
+void CodeGenerator::Visit(Program& program) { impl_->Visit(*this, program); }
+void CodeGenerator::Visit(AssignStmt& stmt) { impl_->Visit(*this, stmt); }
+void CodeGenerator::Visit(IfStmt& stmt) { impl_->Visit(*this, stmt); }
+void CodeGenerator::Visit(WhileStmt& stmt) { impl_->Visit(*this, stmt); }
+void CodeGenerator::Visit(ReturnStmt& stmt) { impl_->Visit(*this, stmt); }
+void CodeGenerator::Visit(BinaryExpr& expr) { impl_->Visit(*this, expr); }
+void CodeGenerator::Visit(UnaryExpr& expr) { impl_->Visit(*this, expr); }
+void CodeGenerator::Visit(VarExpr& expr) { impl_->Visit(*this, expr); }
+void CodeGenerator::Visit(NumberExpr& expr) { impl_->Visit(*this, expr); }
 
-void CodeGenerator::Visit(Program& program) {
-  const auto scope = std::make_unique<Scope>(nullptr);
-  impl_->set_scope(scope.get());
-
-  for (auto it = program.get_stmts_cbegin(), end = program.get_stmts_cend();
-       it != end; ++it) {
-    it->get()->Accept(*this);
-  }
-}
-
-void CodeGenerator::Visit(AssignStmt& stmt) {
-  auto* const rhs = AcceptAndReturn(stmt.get_expr());
-
-  const auto& name = stmt.get_name();
-
-  auto* lhs = impl_->get_scope()->Visible(name);
-  if (!lhs) {
-    lhs = impl_->CreateEntryBlockAlloca(name);
-    impl_->get_scope()->Add(name, lhs);
-  }
-
-  impl_->get_builder()->CreateStore(rhs, lhs);
-}
-
-void CodeGenerator::Visit(ReturnStmt& stmt) {
-  auto* const expr = AcceptAndReturn(stmt.get_expr());
-  impl_->get_builder()->CreateRet(expr);
-}
-
-void CodeGenerator::Visit(IfStmt& stmt) {
-  // TODO
-}
-
-void CodeGenerator::Visit(WhileStmt& stmt) {
-  // TODO
-}
-
-void CodeGenerator::Visit(BinaryExpr& expr) {
-  auto* const lhs = AcceptAndReturn(expr.get_lhs());
-  auto* const rhs = AcceptAndReturn(expr.get_rhs());
-
-  switch (expr.get_op()) {
-    using enum BinaryExpr::Op;
-    case kAdd: {
-      impl_->set_return(impl_->get_builder()->CreateAdd(lhs, rhs, "addtmp"));
-      break;
-    }
-    case kSub: {
-      impl_->set_return(impl_->get_builder()->CreateSub(lhs, rhs, "subtmp"));
-      break;
-    }
-    case kMul: {
-      impl_->set_return(impl_->get_builder()->CreateMul(lhs, rhs, "multmp"));
-      break;
-    }
-    case kDiv: {
-      impl_->set_return(impl_->get_builder()->CreateSDiv(lhs, rhs, "divtmp"));
-      break;
-    }
-    case kMod: {
-      impl_->set_return(impl_->get_builder()->CreateSRem(lhs, rhs, "modtmp"));
-      break;
-    }
-    case kEq: {
-      impl_->set_return(impl_->get_builder()->CreateICmpEQ(lhs, rhs, "eqtmp"));
-      break;
-    }
-    case kNe: {
-      impl_->set_return(impl_->get_builder()->CreateICmpNE(lhs, rhs, "netmp"));
-      break;
-    }
-    case kLt: {
-      impl_->set_return(impl_->get_builder()->CreateICmpSLT(lhs, rhs, "lttmp"));
-      break;
-    }
-    case kGt: {
-      impl_->set_return(impl_->get_builder()->CreateICmpSGT(lhs, rhs, "gttmp"));
-      break;
-    }
-    case kLe: {
-      impl_->set_return(impl_->get_builder()->CreateICmpSLE(lhs, rhs, "letmp"));
-      break;
-    }
-    case kGe: {
-      impl_->set_return(impl_->get_builder()->CreateICmpSGE(lhs, rhs, "getmp"));
-      break;
-    }
-    case kAnd: {
-      impl_->set_return(impl_->get_builder()->CreateAnd(lhs, rhs, "andtmp"));
-      break;
-    }
-    case kOr: {
-      impl_->set_return(impl_->get_builder()->CreateOr(lhs, rhs, "ortmp"));
-      break;
-    }
-  }
-}
-
-void CodeGenerator::Visit(UnaryExpr& expr) {
-  auto* const value = AcceptAndReturn(expr);
-
-  switch (expr.get_op()) {
-    using enum UnaryExpr::Op;
-    case kNeg: {
-      impl_->set_return(impl_->get_builder()->CreateNeg(value, "negtmp"));
-      break;
-    }
-    case kNot: {
-      impl_->set_return(impl_->get_builder()->CreateNot(value, "nottmp"));
-      break;
-    }
-  }
-}
-
-void CodeGenerator::Visit(VarExpr& expr) {
-  const auto& name = expr.get_name();
-
-  auto* const alloc = impl_->get_scope()->Visible(name);
-  if (!alloc) {
-    throw std::runtime_error("Unknown variable " + name);
-  }
-
-  impl_->set_return(impl_->get_builder()->CreateLoad(alloc->getAllocatedType(),
-                                                     alloc, name.c_str()));
-}
-
-void CodeGenerator::Visit(NumberExpr& expr) {
-  impl_->set_return(llvm::ConstantInt::get(
-      *impl_->get_context(), llvm::APInt(64, expr.get_value(), true)));
-}
-
-void CodeGenerator::Dump() { impl_->get_module()->dump(); }
+void CodeGenerator::Dump() { impl_->Dump(); }
 
 }  // namespace frontend

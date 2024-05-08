@@ -5,12 +5,6 @@
 
 #include "visitor.h"
 
-namespace llvm {
-
-class Value;
-
-}  // namespace llvm
-
 namespace frontend {
 
 class INode;
@@ -31,9 +25,6 @@ class CodeGenerator final : public IVisitor {
   void Visit(NumberExpr& expr) override;
 
   void Dump();
-
- private:
-  llvm::Value* AcceptAndReturn(INode& node);
 
  private:
   class Impl;
