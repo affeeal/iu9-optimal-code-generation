@@ -72,15 +72,15 @@ class IfStmt final : public IStmt {
   const IExpr& get_cond() const noexcept { return *cond_; }
   IExpr& get_cond() noexcept { return *cond_; }
 
-  auto get_then_stmts_cbegin() const noexcept { return then_stmts_.cbegin(); }
-  auto get_then_stmts_begin() noexcept { return then_stmts_.begin(); }
-  auto get_then_stmts_cend() const noexcept { return then_stmts_.cend(); }
-  auto get_then_stmts_end() noexcept { return then_stmts_.end(); }
+  auto get_then_cbegin() const noexcept { return then_stmts_.cbegin(); }
+  auto get_then_begin() noexcept { return then_stmts_.begin(); }
+  auto get_then_cend() const noexcept { return then_stmts_.cend(); }
+  auto get_then_end() noexcept { return then_stmts_.end(); }
 
-  auto get_else_stmts_cbegin() const noexcept { return else_stmts_.cbegin(); }
-  auto get_else_stmts_begin() noexcept { return else_stmts_.begin(); }
-  auto get_else_stmts_cend() const noexcept { return else_stmts_.cend(); }
-  auto get_else_stmts_end() noexcept { return else_stmts_.end(); }
+  auto get_else_cbegin() const noexcept { return else_stmts_.cbegin(); }
+  auto get_else_begin() noexcept { return else_stmts_.begin(); }
+  auto get_else_cend() const noexcept { return else_stmts_.cend(); }
+  auto get_else_end() noexcept { return else_stmts_.end(); }
 
  public:
   void Accept(IVisitor& visitor) override { visitor.Visit(*this); }

@@ -1,5 +1,5 @@
 Program -> Stmts
-Stmts -> Stmt | Stmts Stmt
+Stmts -> Stmts Stmt | empty
 Stmt -> AssignStmt | IfStmt | WhileStmt | ReturnStmt
 AssignStmt -> IDENT = Expr ;
 IfStmt -> if ( Expr ) { Stmts } else { Stmts }

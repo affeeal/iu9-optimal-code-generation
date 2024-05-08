@@ -111,15 +111,12 @@ program:
   }
 
 stmts:
-  stmt
-  {
-    $$.push_back($1);
-  }
-| stmts stmt
+  stmts stmt
   {
     $$ = $1;
     $$.push_back($2);
   }
+| %empty { }
 
 stmt:
   assign_stmt

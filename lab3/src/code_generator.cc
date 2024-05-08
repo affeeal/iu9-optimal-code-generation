@@ -1,6 +1,7 @@
 #include "code_generator.h"
 
 // clang-format off
+#include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 // clang-format on
 
@@ -12,14 +13,17 @@ namespace {
 
 class Scope final {
  public:
-  Scope(const Scope* const parent) noexcept : parent_(parent) {}
+  Scope(Scope* const parent) noexcept : parent_(parent) {}
+
+  Scope* get_parent() noexcept { return parent_; }
+  const Scope* get_parent() const noexcept { return parent_; }
 
   void Add(const std::string& name, llvm::AllocaInst* const alloc);
   llvm::AllocaInst* Visible(const std::string& name) const;
   llvm::AllocaInst* Find(const std::string& name) const;
 
  private:
-  const Scope* parent_;
+  Scope* parent_;
   std::unordered_map<std::string, llvm::AllocaInst*> named_allocs_;
 };
 
@@ -118,7 +122,38 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, ReturnStmt& stmt) {
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
-  // TODO
+  auto* const cond = AcceptAndReturn(visitor, stmt.get_cond());
+  auto* const then_bb = llvm::BasicBlock::Create(*context_, "then", main_);
+  auto* const else_bb = llvm::BasicBlock::Create(*context_, "else", main_);
+  auto* const merge_bb = llvm::BasicBlock::Create(*context_, "ifcont", main_);
+
+  builder_->CreateCondBr(cond, then_bb, else_bb);
+
+  {
+    const auto then_scope = std::make_unique<Scope>(scope_);
+    scope_ = then_scope.get();
+    builder_->SetInsertPoint(then_bb);
+    for (auto it = stmt.get_then_cbegin(), end = stmt.get_then_cend();
+         it != end; ++it) {
+      it->get()->Accept(visitor);
+    }
+    builder_->CreateBr(merge_bb);
+    scope_ = scope_->get_parent();
+  }
+
+  {
+    const auto else_scope = std::make_unique<Scope>(scope_);
+    scope_ = else_scope.get();
+    builder_->SetInsertPoint(else_bb);
+    for (auto it = stmt.get_else_cbegin(), end = stmt.get_else_cend();
+         it != end; ++it) {
+      it->get()->Accept(visitor);
+    }
+    builder_->CreateBr(merge_bb);
+    scope_ = scope_->get_parent();
+  }
+
+  builder_->SetInsertPoint(merge_bb);
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, WhileStmt& stmt) {
