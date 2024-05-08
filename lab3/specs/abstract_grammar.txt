@@ -1,0 +1,10 @@
+Program -> Stmts
+Stmts -> Stmts Stmt | empty
+Stmt -> AssignStmt | IfStmt | WhileStmt | ReturnStmt
+AssignStmt -> IDENT = Expr ;
+IfStmt -> if ( Expr ) { Stmts } else { Stmts }
+WhileStmt -> while ( Expr ) { Stmts }
+ReturnStmt -> return Expr ;
+Expr -> Expr BinOp Expr | UnOp Expr | IDENT | NUMBER | ( Expr )
+BinOp -> == | != | < | > | <= | >= | +  | -  | || | *  | /  | % | &&
+UnOp ->  - | !
