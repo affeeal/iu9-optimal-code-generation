@@ -1,15 +1,33 @@
 #include "code_generator.h"
 
+// clang-format off
+#include "llvm/IR/IRBuilder.h"
+// clang-format on
+
 #include "node.h"
 
 namespace frontend {
 
-void CodeGenerator::Scope::Add(const std::string& name,
-                               llvm::AllocaInst* const alloc) {
+namespace {
+
+class Scope final {
+ public:
+  Scope(const Scope* const parent) noexcept : parent_(parent) {}
+
+  void Add(const std::string& name, llvm::AllocaInst* const alloc);
+  llvm::AllocaInst* Visible(const std::string& name) const;
+  llvm::AllocaInst* Find(const std::string& name) const;
+
+ private:
+  const Scope* parent_;
+  std::unordered_map<std::string, llvm::AllocaInst*> named_allocs_;
+};
+
+void Scope::Add(const std::string& name, llvm::AllocaInst* const alloc) {
   named_allocs_[name] = alloc;
 }
 
-llvm::AllocaInst* CodeGenerator::Scope::Visible(const std::string& name) const {
+llvm::AllocaInst* Scope::Visible(const std::string& name) const {
   if (auto* const alloc = Find(name)) {
     return alloc;
   }
@@ -17,7 +35,7 @@ llvm::AllocaInst* CodeGenerator::Scope::Visible(const std::string& name) const {
   return parent_ ? parent_->Find(name) : nullptr;
 }
 
-llvm::AllocaInst* CodeGenerator::Scope::Find(const std::string& name) const {
+llvm::AllocaInst* Scope::Find(const std::string& name) const {
   if (const auto it = named_allocs_.find(name); it != named_allocs_.cend()) {
     return it->second;
   }
@@ -25,7 +43,36 @@ llvm::AllocaInst* CodeGenerator::Scope::Find(const std::string& name) const {
   return nullptr;
 }
 
-CodeGenerator::CodeGenerator()
+}  // namespace
+
+class CodeGenerator::Impl final {
+ public:
+  Impl();
+
+  llvm::LLVMContext* get_context() noexcept { return context_.get(); }
+  llvm::Module* get_module() noexcept { return module_.get(); }
+  llvm::IRBuilder<>* get_builder() noexcept { return builder_.get(); }
+
+  void set_return(llvm::Value* value) noexcept { return_ = value; }
+  llvm::Value* get_return() noexcept { return return_; }
+
+  void set_scope(Scope* scope) noexcept { scope_ = scope; }
+  Scope* get_scope() noexcept { return scope_; }
+
+  llvm::AllocaInst* CreateEntryBlockAlloca(const std::string& name);
+
+ private:
+  std::unique_ptr<llvm::LLVMContext> context_;
+  std::unique_ptr<llvm::Module> module_;
+  std::unique_ptr<llvm::IRBuilder<>> builder_;
+
+  llvm::Function* main_;
+  llvm::Value* return_;
+
+  Scope* scope_;
+};
+
+CodeGenerator::Impl::Impl()
     : context_(std::make_unique<llvm::LLVMContext>()),
       module_(std::make_unique<llvm::Module>("ParaParaCL", *context_)),
       builder_(std::make_unique<llvm::IRBuilder<>>(*context_)) {
@@ -38,21 +85,26 @@ CodeGenerator::CodeGenerator()
   builder_->SetInsertPoint(bb);
 }
 
-llvm::AllocaInst* CodeGenerator::CreateEntryBlockAlloca(
+llvm::AllocaInst* CodeGenerator::Impl::CreateEntryBlockAlloca(
     const std::string& name) {
   auto& entry_block = main_->getEntryBlock();
   auto builder = llvm::IRBuilder<>(&entry_block, entry_block.begin());
   return builder.CreateAlloca(llvm::Type::getInt64Ty(*context_), nullptr, name);
 }
 
+CodeGenerator::CodeGenerator()
+    : impl_(std::make_unique<CodeGenerator::Impl>()) {}
+
+CodeGenerator::~CodeGenerator() = default;
+
 llvm::Value* CodeGenerator::AcceptAndReturn(INode& node) {
   node.Accept(*this);
-  return return_;
+  return impl_->get_return();
 }
 
 void CodeGenerator::Visit(Program& program) {
   const auto scope = std::make_unique<Scope>(nullptr);
-  scope_ = scope.get();
+  impl_->set_scope(scope.get());
 
   for (auto it = program.get_stmts_cbegin(), end = program.get_stmts_cend();
        it != end; ++it) {
@@ -64,18 +116,19 @@ void CodeGenerator::Visit(AssignStmt& stmt) {
   auto* const rhs = AcceptAndReturn(stmt.get_expr());
 
   const auto& name = stmt.get_name();
-  auto* lhs = scope_->Visible(name);
+
+  auto* lhs = impl_->get_scope()->Visible(name);
   if (!lhs) {
-    lhs = CreateEntryBlockAlloca(name);
-    scope_->Add(name, lhs);
+    lhs = impl_->CreateEntryBlockAlloca(name);
+    impl_->get_scope()->Add(name, lhs);
   }
 
-  builder_->CreateStore(rhs, lhs);
+  impl_->get_builder()->CreateStore(rhs, lhs);
 }
 
 void CodeGenerator::Visit(ReturnStmt& stmt) {
   auto* const expr = AcceptAndReturn(stmt.get_expr());
-  builder_->CreateRet(expr);
+  impl_->get_builder()->CreateRet(expr);
 }
 
 void CodeGenerator::Visit(IfStmt& stmt) {
@@ -93,55 +146,55 @@ void CodeGenerator::Visit(BinaryExpr& expr) {
   switch (expr.get_op()) {
     using enum BinaryExpr::Op;
     case kAdd: {
-      return_ = builder_->CreateAdd(lhs, rhs, "addtmp");
+      impl_->set_return(impl_->get_builder()->CreateAdd(lhs, rhs, "addtmp"));
       break;
     }
     case kSub: {
-      return_ = builder_->CreateSub(lhs, rhs, "subtmp");
+      impl_->set_return(impl_->get_builder()->CreateSub(lhs, rhs, "subtmp"));
       break;
     }
     case kMul: {
-      return_ = builder_->CreateMul(lhs, rhs, "multmp");
+      impl_->set_return(impl_->get_builder()->CreateMul(lhs, rhs, "multmp"));
       break;
     }
     case kDiv: {
-      return_ = builder_->CreateSDiv(lhs, rhs, "divtmp");
+      impl_->set_return(impl_->get_builder()->CreateSDiv(lhs, rhs, "divtmp"));
       break;
     }
     case kMod: {
-      return_ = builder_->CreateSRem(lhs, rhs, "modtmp");
+      impl_->set_return(impl_->get_builder()->CreateSRem(lhs, rhs, "modtmp"));
       break;
     }
     case kEq: {
-      return_ = builder_->CreateICmpEQ(lhs, rhs, "eqtmp");
+      impl_->set_return(impl_->get_builder()->CreateICmpEQ(lhs, rhs, "eqtmp"));
       break;
     }
     case kNe: {
-      return_ = builder_->CreateICmpNE(lhs, rhs, "netmp");
+      impl_->set_return(impl_->get_builder()->CreateICmpNE(lhs, rhs, "netmp"));
       break;
     }
     case kLt: {
-      return_ = builder_->CreateICmpSLT(lhs, rhs, "lttmp");
+      impl_->set_return(impl_->get_builder()->CreateICmpSLT(lhs, rhs, "lttmp"));
       break;
     }
     case kGt: {
-      return_ = builder_->CreateICmpSGT(lhs, rhs, "gttmp");
+      impl_->set_return(impl_->get_builder()->CreateICmpSGT(lhs, rhs, "gttmp"));
       break;
     }
     case kLe: {
-      return_ = builder_->CreateICmpSLE(lhs, rhs, "letmp");
+      impl_->set_return(impl_->get_builder()->CreateICmpSLE(lhs, rhs, "letmp"));
       break;
     }
     case kGe: {
-      return_ = builder_->CreateICmpSGE(lhs, rhs, "getmp");
+      impl_->set_return(impl_->get_builder()->CreateICmpSGE(lhs, rhs, "getmp"));
       break;
     }
     case kAnd: {
-      return_ = builder_->CreateAnd(lhs, rhs, "andtmp");
+      impl_->set_return(impl_->get_builder()->CreateAnd(lhs, rhs, "andtmp"));
       break;
     }
     case kOr: {
-      return_ = builder_->CreateOr(lhs, rhs, "ortmp");
+      impl_->set_return(impl_->get_builder()->CreateOr(lhs, rhs, "ortmp"));
       break;
     }
   }
@@ -153,11 +206,11 @@ void CodeGenerator::Visit(UnaryExpr& expr) {
   switch (expr.get_op()) {
     using enum UnaryExpr::Op;
     case kNeg: {
-      return_ = builder_->CreateNeg(value, "negtmp");
+      impl_->set_return(impl_->get_builder()->CreateNeg(value, "negtmp"));
       break;
     }
     case kNot: {
-      return_ = builder_->CreateNot(value, "nottmp");
+      impl_->set_return(impl_->get_builder()->CreateNot(value, "nottmp"));
       break;
     }
   }
@@ -166,20 +219,20 @@ void CodeGenerator::Visit(UnaryExpr& expr) {
 void CodeGenerator::Visit(VarExpr& expr) {
   const auto& name = expr.get_name();
 
-  auto* const alloc = scope_->Visible(name);
+  auto* const alloc = impl_->get_scope()->Visible(name);
   if (!alloc) {
     throw std::runtime_error("Unknown variable " + name);
   }
 
-  return_ =
-      builder_->CreateLoad(alloc->getAllocatedType(), alloc, name.c_str());
+  impl_->set_return(impl_->get_builder()->CreateLoad(alloc->getAllocatedType(),
+                                                     alloc, name.c_str()));
 }
 
 void CodeGenerator::Visit(NumberExpr& expr) {
-  return_ = llvm::ConstantInt::get(*context_,
-                                   llvm::APInt(64, expr.get_value(), true));
+  impl_->set_return(llvm::ConstantInt::get(
+      *impl_->get_context(), llvm::APInt(64, expr.get_value(), true)));
 }
 
-void CodeGenerator::Dump() const { module_->dump(); }
+void CodeGenerator::Dump() { impl_->get_module()->dump(); }
 
 }  // namespace frontend
