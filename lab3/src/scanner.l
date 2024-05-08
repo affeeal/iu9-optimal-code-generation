@@ -24,6 +24,8 @@ NUMBER  [0-9]+
   loc_.step();
 %}
 
+"#".*     { loc_.step(); }
+
 {BLANK}+  { loc_.step(); }
 
 \n+       { loc_.lines(yyleng); loc_.step(); }

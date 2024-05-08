@@ -1,3 +1,5 @@
+# Fibonacci nth number.
+
 a = 0;
 b = 1;
 
