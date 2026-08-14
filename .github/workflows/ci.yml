@@ -17,7 +17,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes \
-            bison flex libzstd-dev llvm-18-dev llvm-18-tools python3
+            bison flex libfl-dev libzstd-dev llvm-18-dev llvm-18-tools python3
       - name: Build and test lab2
         run: |
           cmake -S lab2/src -B build/lab2 \
