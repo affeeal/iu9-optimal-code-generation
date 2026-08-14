@@ -15,8 +15,10 @@
  * with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <array>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <string_view>
 
 // clang-format off
@@ -29,6 +31,7 @@
 #include "gimple-iterator.h"
 #include "context.h"
 #include "plugin-version.h"
+#include "wide-int-print.h"
 // clang-format on
 
 int plugin_is_GPL_compatible;  // asserts the plugin is licensed under the
@@ -36,11 +39,7 @@ int plugin_is_GPL_compatible;  // asserts the plugin is licensed under the
 
 namespace {
 
-class PrintPass;
-
 boost::json::object ir;
-
-const auto kPrintPass = std::make_unique<PrintPass>(g);
 
 constexpr std::string_view kGimpleSingleRhs = "gimple_single_rhs";
 constexpr std::string_view kGimpleUnaryRhs = "gimple_unary_rhs";
@@ -82,6 +81,8 @@ std::string_view ToString(const gimple_rhs_class rhs_class) {
       return kGimpleInvalidRhs;
     }
   }
+
+  gcc_unreachable();
 }
 
 class PrintPass final : public gimple_opt_pass {
@@ -92,7 +93,9 @@ class PrintPass final : public gimple_opt_pass {
   unsigned int execute(function* fn) override;
 };
 
-PrintPass* PrintPass::clone() { return this; }
+PrintPass* PrintPass::clone() { return new PrintPass(m_ctxt); }
+
+const auto kPrintPass = std::make_unique<PrintPass>(g);
 
 boost::json::object ToObject(const const_tree t) {
   auto obj = boost::json::object{};
@@ -100,12 +103,20 @@ boost::json::object ToObject(const const_tree t) {
 
   switch (TREE_CODE(t)) {
     case INTEGER_CST: {
-      obj["value"] = TREE_INT_CST_LOW(t);
+      auto value = std::array<char, WIDE_INT_PRINT_BUFFER_SIZE>{};
+      print_dec(wi::to_wide(t), value.data(), TYPE_SIGN(TREE_TYPE(t)));
+      obj["value"] = value.data();
       break;
     }
 
     case STRING_CST: {
-      obj["value"] = TREE_STRING_POINTER(t);
+      const auto length = static_cast<std::size_t>(TREE_STRING_LENGTH(t));
+      auto value = std::string(TREE_STRING_POINTER(t), length);
+      if (!value.empty() && value.back() == '\0') {
+        value.pop_back();
+      }
+      obj["value"] = std::move(value);
+      obj["storage_bytes"] = length;
       break;
     }
 
@@ -203,7 +214,12 @@ boost::json::object GcallToObject(const gcall* const call) {
     call_obj["lhs"] = ToObject(t);
   }
 
-  call_obj["callee_name"] = fndecl_name(gimple_call_fndecl(call));
+  if (const auto callee = gimple_call_fndecl(call)) {
+    call_obj["callee_name"] = fndecl_name(callee);
+  } else {
+    call_obj["callee_name"] = "<indirect>";
+    call_obj["callee"] = ToObject(gimple_call_fn(call));
+  }
 
   const auto args_num = gimple_call_num_args(call);
   auto& args = (call_obj["callee_args"] = boost::json::array{}).as_array();
@@ -219,9 +235,9 @@ boost::json::object GcallToObject(const gcall* const call) {
 boost::json::object GcondToObject(const gcond* const cond) {
   auto cond_obj = boost::json::object{};
   cond_obj["type"] = "gimple_cond";
-  cond_obj["predicat_code"] = get_tree_code_name(gimple_cond_code(cond));
-  cond_obj["predicat_lhs"] = ToObject(gimple_cond_lhs(cond));
-  cond_obj["predicat_rhs"] = ToObject(gimple_cond_rhs(cond));
+  cond_obj["predicate_code"] = get_tree_code_name(gimple_cond_code(cond));
+  cond_obj["predicate_lhs"] = ToObject(gimple_cond_lhs(cond));
+  cond_obj["predicate_rhs"] = ToObject(gimple_cond_rhs(cond));
 
   return cond_obj;
 }
@@ -234,9 +250,12 @@ boost::json::object GlabelToObject(const glabel* const label) {
   return label_obj;
 }
 
-boost::json::object GreturnToObject([[maybe_unused]] const greturn* const ret) {
+boost::json::object GreturnToObject(const greturn* const ret) {
   auto return_obj = boost::json::object{};
   return_obj["type"] = "gimple_return";
+  if (const auto value = gimple_return_retval(ret)) {
+    return_obj["value"] = ToObject(value);
+  }
 
   return return_obj;
 }
@@ -333,13 +352,13 @@ int plugin_init(struct plugin_name_args* plugin_info,
     return 1;
   }
 
-  auto plugin_additonal_info = ::plugin_info{
+  auto plugin_additional_info = ::plugin_info{
       .version = "1.0",
       .help = "GCC GIMPLE/IR print plugin",
   };
 
   register_callback(plugin_info->base_name, PLUGIN_INFO, nullptr,
-                    &plugin_additonal_info);
+                    &plugin_additional_info);
 
   auto pass_info = register_pass_info{
       .pass = kPrintPass.get(),

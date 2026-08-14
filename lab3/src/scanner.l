@@ -52,6 +52,8 @@ NUMBER  [0-9]+
 "-"       { return Parser::make_MINUS(loc_); }
 "*"       { return Parser::make_STAR(loc_); }
 "/"       { return Parser::make_SLASH(loc_); }
+"%"       { return Parser::make_PERCENT(loc_); }
+"!"       { return Parser::make_EXCLAMATORY(loc_); }
 
 "if"      { return Parser::make_IF(loc_); }
 "else"    { return Parser::make_ELSE(loc_); }

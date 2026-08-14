@@ -6,7 +6,8 @@
 namespace frontend {
 
 class Driver final {
-  bool trace_scanning_, trace_parsing_;
+  bool trace_scanning_ = false;
+  bool trace_parsing_ = false;
   std::unique_ptr<Program> program_;
 
  public:

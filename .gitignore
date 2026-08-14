@@ -1,4 +1,4 @@
-build
-.cache
+/build/
+/.cache/
 *.aux
 *.log

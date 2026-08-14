@@ -265,13 +265,13 @@
             },
             {
               "type": "gimple_cond",
-              "predicat_code": "eq_expr",
-              "predicat_lhs": {
+              "predicate_code": "eq_expr",
+              "predicate_lhs": {
                 "type": "ssa_name",
                 "name": "text",
                 "version": 4
               },
-              "predicat_rhs": {
+              "predicate_rhs": {
                 "type": "integer_cst",
                 "value": 0
               }

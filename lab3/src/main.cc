@@ -15,6 +15,8 @@ int main(int argc, char* argv[]) try {
   program->Accept(code_generator);
 
   code_generator.Print();
+  return 0;
 } catch (const std::exception& e) {
   std::cerr << e.what() << std::endl;
+  return 1;
 }

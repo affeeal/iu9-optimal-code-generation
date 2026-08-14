@@ -1,0 +1,6 @@
+BasedOnStyle: Google
+ColumnLimit: 80
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+PointerAlignment: Left
+SortIncludes: CaseSensitive

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  llvm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM frontend dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            bison flex libzstd-dev llvm-18-dev llvm-18-tools python3
+      - name: Build and test lab2
+        run: |
+          cmake -S lab2/src -B build/lab2 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+          cmake --build build/lab2 --parallel 2
+          ctest --test-dir build/lab2 --output-on-failure
+      - name: Build and test lab3
+        run: |
+          cmake -S lab3/src -B build/lab3 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+          cmake --build build/lab3 --parallel 2
+          ctest --test-dir build/lab3 --output-on-failure
+
+  gcc-plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GCC plugin dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            g++-13 gcc-13-plugin-dev libboost-json1.83-dev python3
+      - name: Build and test lab1 with GCC 13
+        run: |
+          cmake -S lab1/src -B build/lab1 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build build/lab1 --parallel 2
+          ctest --test-dir build/lab1 --output-on-failure

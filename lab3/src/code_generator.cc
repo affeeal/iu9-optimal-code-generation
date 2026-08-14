@@ -1,8 +1,12 @@
 #include "code_generator.h"
 
+#include <stdexcept>
+#include <unordered_map>
+
 // clang-format off
-#include "llvm/IR/Verifier.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 // clang-format on
 
 #include "node.h"
@@ -36,7 +40,7 @@ llvm::AllocaInst* Scope::Visible(const std::string& name) const {
     return alloc;
   }
 
-  return parent_ ? parent_->Find(name) : nullptr;
+  return parent_ ? parent_->Visible(name) : nullptr;
 }
 
 llvm::AllocaInst* Scope::Find(const std::string& name) const {
@@ -68,6 +72,11 @@ class CodeGenerator::Impl final {
  private:
   llvm::AllocaInst* CreateEntryBlockAlloca(const std::string& name);
   llvm::Value* AcceptAndReturn(CodeGenerator& visitor, INode& node);
+  llvm::Value* ToCondition(llvm::Value* value);
+  bool IsCurrentBlockTerminated() const;
+  void VisitStatements(CodeGenerator& visitor,
+                       std::vector<std::unique_ptr<IStmt>>::iterator begin,
+                       std::vector<std::unique_ptr<IStmt>>::iterator end);
 
  private:
   std::unique_ptr<llvm::LLVMContext> context_;
@@ -75,9 +84,9 @@ class CodeGenerator::Impl final {
   std::unique_ptr<llvm::IRBuilder<>> builder_;
 
   llvm::Function* main_;
-  llvm::Value* return_;
+  llvm::Value* return_ = nullptr;
 
-  Scope* scope_;
+  Scope* scope_ = nullptr;
 };
 
 CodeGenerator::Impl::Impl()
@@ -97,12 +106,16 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, Program& program) {
   const auto scope = std::make_unique<Scope>(nullptr);
   scope_ = scope.get();
 
-  for (auto it = program.get_stmts_cbegin(), end = program.get_stmts_cend();
-       it != end; ++it) {
-    it->get()->Accept(visitor);
+  VisitStatements(visitor, program.get_stmts_begin(), program.get_stmts_end());
+
+  if (builder_->GetInsertBlock() != nullptr && !IsCurrentBlockTerminated()) {
+    throw std::runtime_error(
+        "Reachable control-flow path falls through without return");
   }
 
-  llvm::verifyFunction(*main_, &llvm::errs());
+  if (llvm::verifyFunction(*main_, &llvm::errs())) {
+    throw std::runtime_error("LLVM function verification failed");
+  }
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, AssignStmt& stmt) {
@@ -124,22 +137,22 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, ReturnStmt& stmt) {
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
-  auto* const cond = AcceptAndReturn(visitor, stmt.get_cond());
+  auto* const cond = ToCondition(AcceptAndReturn(visitor, stmt.get_cond()));
   auto* const then_bb = llvm::BasicBlock::Create(*context_, "then", main_);
   auto* const else_bb = llvm::BasicBlock::Create(*context_, "else", main_);
   builder_->CreateCondBr(cond, then_bb, else_bb);
 
-  auto* const cont_bb = llvm::BasicBlock::Create(*context_, "cont", main_);
+  llvm::BasicBlock* then_end = nullptr;
+  llvm::BasicBlock* else_end = nullptr;
 
   {
     const auto then_scope = std::make_unique<Scope>(scope_);
     scope_ = then_scope.get();
     builder_->SetInsertPoint(then_bb);
-    for (auto it = stmt.get_then_cbegin(), end = stmt.get_then_cend();
-         it != end; ++it) {
-      it->get()->Accept(visitor);
+    VisitStatements(visitor, stmt.get_then_begin(), stmt.get_then_end());
+    if (!IsCurrentBlockTerminated()) {
+      then_end = builder_->GetInsertBlock();
     }
-    builder_->CreateBr(cont_bb);
     scope_ = scope_->get_parent();
   }
 
@@ -147,14 +160,27 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, IfStmt& stmt) {
     const auto else_scope = std::make_unique<Scope>(scope_);
     scope_ = else_scope.get();
     builder_->SetInsertPoint(else_bb);
-    for (auto it = stmt.get_else_cbegin(), end = stmt.get_else_cend();
-         it != end; ++it) {
-      it->get()->Accept(visitor);
+    VisitStatements(visitor, stmt.get_else_begin(), stmt.get_else_end());
+    if (!IsCurrentBlockTerminated()) {
+      else_end = builder_->GetInsertBlock();
     }
-    builder_->CreateBr(cont_bb);
     scope_ = scope_->get_parent();
   }
 
+  if (then_end == nullptr && else_end == nullptr) {
+    builder_->ClearInsertionPoint();
+    return;
+  }
+
+  auto* const cont_bb = llvm::BasicBlock::Create(*context_, "cont", main_);
+  if (then_end != nullptr) {
+    builder_->SetInsertPoint(then_end);
+    builder_->CreateBr(cont_bb);
+  }
+  if (else_end != nullptr) {
+    builder_->SetInsertPoint(else_end);
+    builder_->CreateBr(cont_bb);
+  }
   builder_->SetInsertPoint(cont_bb);
 }
 
@@ -164,7 +190,7 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, WhileStmt& stmt) {
   builder_->CreateBr(while_bb);
   builder_->SetInsertPoint(while_bb);
 
-  auto* const cond = AcceptAndReturn(visitor, stmt.get_cond());
+  auto* const cond = ToCondition(AcceptAndReturn(visitor, stmt.get_cond()));
   auto* const do_bb = llvm::BasicBlock::Create(*context_, "do", main_);
   auto* const cont_bb = llvm::BasicBlock::Create(*context_, "cont", main_);
 
@@ -175,11 +201,10 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, WhileStmt& stmt) {
     scope_ = do_scope.get();
 
     builder_->SetInsertPoint(do_bb);
-    for (auto it = stmt.get_stmts_cbegin(), end = stmt.get_stmts_cend();
-         it != end; ++it) {
-      it->get()->Accept(visitor);
+    VisitStatements(visitor, stmt.get_stmts_begin(), stmt.get_stmts_end());
+    if (!IsCurrentBlockTerminated()) {
+      builder_->CreateBr(while_bb);
     }
-    builder_->CreateBr(while_bb);
 
     scope_ = scope_->get_parent();
   }
@@ -214,42 +239,58 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, BinaryExpr& expr) {
       break;
     }
     case kEq: {
-      return_ = builder_->CreateICmpEQ(lhs, rhs, "eqtmp");
+      return_ =
+          builder_->CreateZExt(builder_->CreateICmpEQ(lhs, rhs, "eqtmp"),
+                               llvm::Type::getInt64Ty(*context_), "eqvalue");
       break;
     }
     case kNe: {
-      return_ = builder_->CreateICmpNE(lhs, rhs, "netmp");
+      return_ =
+          builder_->CreateZExt(builder_->CreateICmpNE(lhs, rhs, "netmp"),
+                               llvm::Type::getInt64Ty(*context_), "nevalue");
       break;
     }
     case kLt: {
-      return_ = builder_->CreateICmpSLT(lhs, rhs, "lttmp");
+      return_ =
+          builder_->CreateZExt(builder_->CreateICmpSLT(lhs, rhs, "lttmp"),
+                               llvm::Type::getInt64Ty(*context_), "ltvalue");
       break;
     }
     case kGt: {
-      return_ = builder_->CreateICmpSGT(lhs, rhs, "gttmp");
+      return_ =
+          builder_->CreateZExt(builder_->CreateICmpSGT(lhs, rhs, "gttmp"),
+                               llvm::Type::getInt64Ty(*context_), "gtvalue");
       break;
     }
     case kLe: {
-      return_ = builder_->CreateICmpSLE(lhs, rhs, "letmp");
+      return_ =
+          builder_->CreateZExt(builder_->CreateICmpSLE(lhs, rhs, "letmp"),
+                               llvm::Type::getInt64Ty(*context_), "levalue");
       break;
     }
     case kGe: {
-      return_ = builder_->CreateICmpSGE(lhs, rhs, "getmp");
+      return_ =
+          builder_->CreateZExt(builder_->CreateICmpSGE(lhs, rhs, "getmp"),
+                               llvm::Type::getInt64Ty(*context_), "gevalue");
       break;
     }
     case kAnd: {
-      return_ = builder_->CreateAnd(lhs, rhs, "andtmp");
+      return_ = builder_->CreateZExt(
+          builder_->CreateAnd(ToCondition(lhs), ToCondition(rhs), "andtmp"),
+          llvm::Type::getInt64Ty(*context_), "andvalue");
       break;
     }
     case kOr: {
-      return_ = builder_->CreateOr(lhs, rhs, "ortmp");
+      return_ = builder_->CreateZExt(
+          builder_->CreateOr(ToCondition(lhs), ToCondition(rhs), "ortmp"),
+          llvm::Type::getInt64Ty(*context_), "orvalue");
       break;
     }
   }
 }
 
 void CodeGenerator::Impl::Visit(CodeGenerator& visitor, UnaryExpr& expr) {
-  auto* const value = AcceptAndReturn(visitor, expr);
+  auto* const value = AcceptAndReturn(visitor, expr.get_expr());
 
   switch (expr.get_op()) {
     using enum UnaryExpr::Op;
@@ -258,13 +299,17 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, UnaryExpr& expr) {
       break;
     }
     case kNot: {
-      return_ = builder_->CreateNot(value, "nottmp");
+      return_ = builder_->CreateZExt(
+          builder_->CreateICmpEQ(
+              value, llvm::ConstantInt::get(value->getType(), 0), "nottmp"),
+          llvm::Type::getInt64Ty(*context_), "notvalue");
       break;
     }
   }
 }
 
-void CodeGenerator::Impl::Visit(CodeGenerator& visitor, VarExpr& expr) {
+void CodeGenerator::Impl::Visit([[maybe_unused]] CodeGenerator& visitor,
+                                VarExpr& expr) {
   const auto& name = expr.get_name();
 
   auto* const alloc = scope_->Visible(name);
@@ -276,7 +321,8 @@ void CodeGenerator::Impl::Visit(CodeGenerator& visitor, VarExpr& expr) {
       builder_->CreateLoad(alloc->getAllocatedType(), alloc, name.c_str());
 }
 
-void CodeGenerator::Impl::Visit(CodeGenerator& visitor, NumberExpr& expr) {
+void CodeGenerator::Impl::Visit([[maybe_unused]] CodeGenerator& visitor,
+                                NumberExpr& expr) {
   return_ = llvm::ConstantInt::get(*context_,
                                    llvm::APInt(64, expr.get_value(), true));
 }
@@ -294,6 +340,24 @@ llvm::Value* CodeGenerator::Impl::AcceptAndReturn(CodeGenerator& code_generator,
                                                   INode& node) {
   node.Accept(code_generator);
   return return_;
+}
+
+llvm::Value* CodeGenerator::Impl::ToCondition(llvm::Value* const value) {
+  return builder_->CreateICmpNE(
+      value, llvm::ConstantInt::get(value->getType(), 0), "condition");
+}
+
+bool CodeGenerator::Impl::IsCurrentBlockTerminated() const {
+  const auto* const block = builder_->GetInsertBlock();
+  return block == nullptr || block->getTerminator() != nullptr;
+}
+
+void CodeGenerator::Impl::VisitStatements(
+    CodeGenerator& visitor, std::vector<std::unique_ptr<IStmt>>::iterator begin,
+    const std::vector<std::unique_ptr<IStmt>>::iterator end) {
+  for (auto it = begin; it != end && !IsCurrentBlockTerminated(); ++it) {
+    (*it)->Accept(visitor);
+  }
 }
 
 CodeGenerator::CodeGenerator()

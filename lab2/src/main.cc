@@ -1,6 +1,9 @@
+#include <memory>
+
 // clang-format off
-#include "llvm/IR/Verifier.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 // clang-format on
 
 int main() {
@@ -22,7 +25,10 @@ int main() {
 
   builder->CreateRet(add);
 
-  llvm::verifyFunction(*func, &llvm::errs());
+  if (llvm::verifyFunction(*func, &llvm::errs())) {
+    return 1;
+  }
 
   module->print(llvm::outs(), nullptr);
+  return 0;
 }
